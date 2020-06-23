@@ -1,0 +1,456 @@
+---
+title: "Catch comparison paired tests"
+author: "Jason Flower"
+date: "19/06/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(tidyverse)
+library(knitr)
+library(vegan) #for diversity comparison
+
+source("../functions/testing_2samples.R")
+```
+
+```{r data import and tidying, message=FALSE}
+#full dataset (each fish)
+traps <- read_csv("../data/traps_data.csv", col_types = cols_only(
+  TrapID = col_character(),
+  Surveyors = col_character(),
+  Length_cm = col_double(),
+  LengthType_FL_TL = col_character(),
+  Weight_Grams = col_double(),
+  sciname = col_character(),
+  Date_YMD = col_date(format = ""),
+  Exp_or_Cont = col_character(),
+  design = col_character(),
+  Deep_Shallow = col_character(),
+  days_since_last_haul = col_double(),
+  common = col_character(),
+  family = col_character(),
+  N_coord = col_double(),
+  W_coord = col_double(),
+  location_exposure = col_character(),
+  depth_m = col_double(),
+  zero_or_1_fish = col_double()
+))
+
+#same dataset, zero fish hauls excluded
+traps_no_zeros <- traps %>% 
+  filter(zero_or_1_fish != 0)
+
+#to get only paired trap data, summarise to get mean length for each trap, spread the data, and then use na.omit to drop any traps that don't have a mean length value for both Control and Experimental. Gather the data back together
+traps_paired <- traps %>% 
+  group_by(Date_YMD, TrapID, Exp_or_Cont) %>%
+  summarise(Length_mean = mean(Length_cm)) %>%
+  #filter(Length_mean != 0) %>%
+  mutate(TrapNo = str_extract(TrapID, "\\d+")) %>%
+  ungroup() %>%
+  select(-TrapID) %>% #need to remove this otherwise spread doesn't work as needed
+  spread(Exp_or_Cont, Length_mean) %>%
+  na.omit() %>%
+  gather(key = "Exp_or_Cont", value = "Length_mean", c("Control", "Experimental")) %>%
+  #rebuild TrapID code
+  mutate(TrapID = str_c(str_sub(Exp_or_Cont, 1,1), TrapNo)) %>%
+  select(-TrapNo) %>%
+  distinct(TrapID, Date_YMD) %>%
+  inner_join(traps)
+
+#make a dataset excluding the traps hauls with no fish
+traps_paired_no_zeros <- traps %>% 
+  filter(common != "No fish") %>%
+  group_by(Date_YMD, TrapID, Exp_or_Cont) %>%
+  summarise(Length_mean = mean(Length_cm)) %>%
+  #filter(Length_mean != 0) %>%
+  mutate(TrapNo = str_extract(TrapID, "\\d+")) %>%
+  ungroup() %>%
+  select(-TrapID) %>% #need to remove this otherwise spread doesn't work as needed
+  spread(Exp_or_Cont, Length_mean) %>%
+  na.omit() %>%
+  gather(key = "Exp_or_Cont", value = "Length_mean", c("Control", "Experimental")) %>%
+  #rebuild TrapID code
+  mutate(TrapID = str_c(str_sub(Exp_or_Cont, 1,1), TrapNo)) %>%
+  select(-TrapNo) %>%
+  distinct(TrapID, Date_YMD) %>%
+  inner_join(traps)
+
+#import data summarized at the haul level
+trap_hauls <- read_csv("../data/traps_hauls.csv", col_types = cols_only(
+  TrapID = col_character(),
+  Date_YMD = col_date(format = ""),
+  Exp_or_Cont = col_character(),
+  design = col_character(),
+  days_since_last_haul = col_double(),
+  depth_m = col_double(),
+  N_coord = col_double(),
+  W_coord = col_double(),
+  location_exposure = col_character(),
+  mean_length_cm = col_double(),
+  total_biomass_kg = col_double(),
+  no_fish = col_double(),
+  no_species = col_double()
+))
+
+#summarize data for hauls
+trap_hauls_no_zero <- traps_no_zeros %>% 
+  group_by(TrapID, Date_YMD, Exp_or_Cont) %>% 
+  summarise(mean_length_cm = mean(Length_cm), total_biomass_kg = sum(Weight_Grams)/1000, no_fish = sum(zero_or_1_fish), no_species = n_distinct(sciname), depth_m = mean(depth_m), days_since_last_haul = mean(days_since_last_haul)) %>%
+  mutate(no_species = case_when(no_fish == 0 ~ 0,
+                                TRUE ~ as.numeric(no_species))) %>% 
+  ungroup()
+
+trap_hauls_paired <- traps_paired %>% 
+  group_by(TrapID, Date_YMD, Exp_or_Cont) %>% 
+  summarise(mean_length_cm = mean(Length_cm), total_biomass_kg = sum(Weight_Grams)/1000, no_fish = sum(zero_or_1_fish), no_species = n_distinct(sciname), depth_m = mean(depth_m), days_since_last_haul = mean(days_since_last_haul)) %>%
+  #need this otherwise traps hauls with no fish are counted as having 1 species
+  mutate(no_species = case_when(no_fish == 0 ~ 0,
+                                TRUE ~ as.numeric(no_species))) %>% 
+  ungroup()
+
+trap_hauls_paired_no_zeros <- traps_paired_no_zeros %>% 
+  group_by(TrapID, Date_YMD, Exp_or_Cont) %>% 
+  summarise(mean_length_cm = mean(Length_cm), total_biomass_kg = sum(Weight_Grams)/1000, no_fish = sum(zero_or_1_fish), no_species = n_distinct(sciname), depth_m = mean(depth_m), days_since_last_haul = mean(days_since_last_haul)) %>%
+  #need this otherwise traps hauls with no fish are counted as having 1 species
+  mutate(no_species = case_when(no_fish == 0 ~ 0,
+                                TRUE ~ as.numeric(no_species))) %>% 
+  ungroup()
+
+```
+
+## Number of fish 
+```{r number of fish in haul}
+#using paired data
+data_for_testing <- trap_hauls_paired %>% 
+  mutate(log_no_fish = log(no_fish+1))
+
+#call function to get diagnostic plots and t.test
+testing_2sample_sig_diff(data = data_for_testing, variable = 'log_no_fish', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+  
+#also do non-parametric test as data is not very normal
+data_for_testing %>%
+  wilcox.test(data = ., no_fish ~ Exp_or_Cont, paired = TRUE)
+```
+
+## Number of fish, excluding zero hauls
+```{r number of fish in haul excluding zero hauls}
+#using paired data without zero hauls
+data_for_testing <- trap_hauls_paired_no_zeros %>% 
+  mutate(log_no_fish = log(no_fish))
+
+#call function to get diagnostic plots and t.test
+testing_2sample_sig_diff(data = data_for_testing, variable = 'log_no_fish', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+  
+#also do non-parametric test as data is not very normal
+data_for_testing %>%
+  wilcox.test(data = ., no_fish ~ Exp_or_Cont, paired = TRUE)
+```
+
+## Mean length of individual fish
+```{r mean fish length}
+#using paired data
+data_for_testing <- traps_paired %>%  
+  mutate(log_length = log(Length_cm+1))
+
+#call function to get diagnostic plots and t.test
+#not paired data as individual samples (fish measurements are not paired)
+testing_2sample_sig_diff(data = data_for_testing, variable = 'log_length', group = 'Exp_or_Cont', paired_Tor_F = FALSE)
+  
+#also do non-parametric test
+data_for_testing %>%
+  wilcox.test(data = ., Length_cm ~ Exp_or_Cont, paired = FALSE)
+```
+
+## Mean length of individual fish, zero hauls excluded
+
+```{r mean fish length no zeros}
+#using paired data
+data_for_testing <- traps_paired_no_zeros %>% 
+  mutate(log_length = log(Length_cm))
+
+#call function to get diagnostic plots and t.test
+#not paired data as individual samples (fish measurements are not paired)
+testing_2sample_sig_diff(data = data_for_testing, variable = 'log_length', group = 'Exp_or_Cont', paired_Tor_F = FALSE)
+  
+#also do non-parametric test
+data_for_testing %>%
+  wilcox.test(data = ., Length_cm ~ Exp_or_Cont, paired = FALSE)
+```
+
+## Mean length of fish per haul
+
+```{r mean length of fish per haul}
+#using only paired data
+data_for_testing <- trap_hauls_paired %>% 
+  mutate(log_length = log(mean_length_cm+1))
+
+#call function to get diagnostic plots and t.test
+testing_2sample_sig_diff(data = data_for_testing, variable = 'log_length', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+  
+#also do non-parametric test for double check
+data_for_testing %>%  
+  wilcox.test(data = ., mean_length_cm ~ Exp_or_Cont, paired = TRUE)
+```
+
+## Mean length of fish per haul, zeros excluded
+
+```{r mean length of fish per haul, zeros excluded}
+#using only paired data
+data_for_testing <- trap_hauls_paired_no_zeros %>% 
+  mutate(log_length = log(mean_length_cm+1))
+
+#call function to get diagnostic plots and t.test
+testing_2sample_sig_diff(data = data_for_testing, variable = 'log_length', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+  
+#also do non-parametric test for double check
+data_for_testing %>%  
+  wilcox.test(data = ., mean_length_cm ~ Exp_or_Cont, paired = TRUE)
+```
+
+## Mean weight of individual fish
+
+```{r mean weight of individual fish}
+#using all data
+data_for_testing <- traps_paired %>% 
+  mutate(log_weight = log(Weight_Grams+1))
+
+#call function to get diagnostic plots and t.test
+testing_2sample_sig_diff(data = data_for_testing, variable = 'Weight_Grams', group = 'Exp_or_Cont', paired_Tor_F = FALSE)
+testing_2sample_sig_diff(data = data_for_testing, variable = 'log_weight', group = 'Exp_or_Cont', paired_Tor_F = FALSE)
+  
+#also do non-parametric test for double check
+data_for_testing %>%  
+  wilcox.test(data = ., Weight_Grams ~ Exp_or_Cont, paired = FALSE)
+```
+
+## Mean weight of individual fish, zeros excluded
+
+```{r mean weight of individual fish, zeros excluded}
+#using all data
+data_for_testing <- traps_paired_no_zeros %>% 
+  mutate(log_weight = log(Weight_Grams))
+
+#call function to get diagnostic plots and t.test
+testing_2sample_sig_diff(data = data_for_testing, variable = 'Weight_Grams', group = 'Exp_or_Cont', paired_Tor_F = FALSE)
+testing_2sample_sig_diff(data = data_for_testing, variable = 'log_weight', group = 'Exp_or_Cont', paired_Tor_F = FALSE)
+  
+#also do non-parametric test for double check
+data_for_testing %>%  
+  wilcox.test(data = ., Weight_Grams ~ Exp_or_Cont, paired = FALSE)
+```
+
+## Mean total biomass of fish in haul
+
+```{r mean total biomass of fish in haul}
+#using all data
+data_for_testing <- trap_hauls_paired %>% 
+  mutate(log_weight = log(total_biomass_kg+1))
+
+#call function to get diagnostic plots and t.test
+testing_2sample_sig_diff(data = data_for_testing, variable = 'total_biomass_kg', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+testing_2sample_sig_diff(data = data_for_testing, variable = 'log_weight', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+  
+#also do non-parametric test for double check
+data_for_testing %>%  
+  wilcox.test(data = ., total_biomass_kg ~ Exp_or_Cont, paired = TRUE)
+```
+
+## Mean total biomass of fish in haul, zeros excluded
+
+```{r mean total biomass of fish in haul, zeros excluded}
+#using all data
+data_for_testing <- trap_hauls_paired_no_zeros %>% 
+  mutate(log_weight = log(total_biomass_kg))
+
+#call function to get diagnostic plots and t.test
+testing_2sample_sig_diff(data = data_for_testing, variable = 'total_biomass_kg', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+testing_2sample_sig_diff(data = data_for_testing, variable = 'log_weight', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+  
+#also do non-parametric test for double check
+data_for_testing %>%  
+  wilcox.test(data = ., total_biomass_kg ~ Exp_or_Cont, paired = TRUE)
+```
+
+## Mean number of species per haul
+
+```{r no. species per haul}
+#using all data
+data_for_testing <- trap_hauls_paired %>% 
+  mutate(log_no_species = log(no_species+1))
+
+#call function to get diagnostic plots and t.test
+testing_2sample_sig_diff(data = data_for_testing, variable = 'no_species', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+testing_2sample_sig_diff(data = data_for_testing, variable = 'log_no_species', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+
+#also do non-parametric test for double check
+data_for_testing %>%  
+  wilcox.test(data = ., no_species ~ Exp_or_Cont, paired = TRUE)
+```
+
+## Mean number of species per haul, zeros excluded
+
+```{r no. species per haul, zeros excluded}
+#using all data
+data_for_testing <- trap_hauls_paired_no_zeros %>% 
+  mutate(log_no_species = log(no_species))
+
+#call function to get diagnostic plots and t.test
+testing_2sample_sig_diff(data = data_for_testing, variable = 'no_species', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+testing_2sample_sig_diff(data = data_for_testing, variable = 'log_no_species', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+
+#also do non-parametric test for double check
+data_for_testing %>%  
+  wilcox.test(data = ., no_species ~ Exp_or_Cont, paired = TRUE)
+```
+
+## Compare species diversity
+
+```{r compare species diversity}
+
+#get species abundance matrix - using paired data only
+species_count_matrix <- traps_paired %>% 
+  group_by(TrapID, Date_YMD, Exp_or_Cont, common, days_since_last_haul, design, location_exposure) %>% 
+  count(common) %>% 
+  ungroup() %>%
+  #this creates a HaulID using TrapID and date
+	unite(TrapID,Date_YMD,col="HaulID",sep="_") %>%
+  spread(common,n,fill=0) 
+
+#calculate diversity for each haul
+diversity_matrix <- species_count_matrix %>% 
+  select(-HaulID, -Exp_or_Cont, -days_since_last_haul, -design, -location_exposure) %>% 
+  diversity() %>% 
+  as_tibble()
+
+#re-attach metadata
+trap_diversity <- species_count_matrix %>% 
+  select(HaulID, Exp_or_Cont, days_since_last_haul, design, location_exposure) %>% 
+  bind_cols(diversity_matrix)
+
+#boxplot of Shannon index
+trap_diversity %>% 
+  ggplot(aes(x = Exp_or_Cont, y= value, colour = Exp_or_Cont)) +
+  geom_boxplot() +
+  geom_point() +
+  labs(x= "", y = "Shannon diversity index")
+
+#plot pairs
+trap_diversity %>% 
+  mutate(HaulID_mod = str_sub(HaulID, start = 2)) %>% 
+  ggplot(aes(x=Exp_or_Cont, y = value, colour = Exp_or_Cont)) +
+  geom_point() +
+  geom_line(aes(group = HaulID_mod))
+
+#call function to get diagnostic plots and t.test
+testing_2sample_sig_diff(data = trap_diversity, variable = 'value', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+
+trap_diversity %>% 
+  wilcox.test(data = ., value ~ Exp_or_Cont, paired = TRUE)
+```
+
+## Alternative species diversity comparison
+```{r compare effective number of species}
+#calculate effective number of species by transforming Shannon index (see http://www.loujost.com/Statistics%20and%20Physics/Diversity%20and%20Similarity/How%20to%20compare%20the%20diversities%20of%20two%20communities.htm)
+
+trap_diversity <- trap_diversity %>% 
+  mutate(eff_diversity = exp(value))
+
+#website and associated paper (http://www.loujost.com/Statistics%20and%20Physics/Diversity%20and%20Similarity/JostEntropy%20AndDiversity.pdf) says that it is better to compare effective diversity, so try this method too. Note that comparing paired diversity indices also seems to be a justifiable method judging by some researchgate conversations.
+
+#Boxplot of effective diversity
+trap_diversity %>% 
+  ggplot(aes(x = Exp_or_Cont, y= eff_diversity, colour = Exp_or_Cont)) +
+  geom_boxplot() +
+  geom_point() +
+  labs(x= "", y = "Effective diversity")
+
+#plot pairs
+trap_diversity %>% 
+  mutate(HaulID_mod = str_sub(HaulID, start = 2)) %>% 
+  ggplot(aes(x=Exp_or_Cont, y = eff_diversity, colour = Exp_or_Cont)) +
+  geom_point() +
+  geom_line(aes(group = HaulID_mod))
+  
+#call function to get diagnostic plots and t.test
+testing_2sample_sig_diff(data = trap_diversity, variable = 'eff_diversity', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+
+trap_diversity %>% 
+  wilcox.test(data = ., eff_diversity ~ Exp_or_Cont, paired = TRUE)
+```
+
+## Compare speies diversity, zeros excluded
+
+```{r compare species diversity, zeros excluded}
+
+#get species abundance matrix - using paired data, zeris excluded
+species_count_matrix <- traps_paired_no_zeros %>% 
+  group_by(TrapID, Date_YMD, Exp_or_Cont, common, days_since_last_haul, design, location_exposure) %>% 
+  count(common) %>% 
+  ungroup() %>%
+  #this creates a HaulID using TrapID and date
+	unite(TrapID,Date_YMD,col="HaulID",sep="_") %>%
+  spread(common,n,fill=0) 
+
+#calculate diversity for each haul
+diversity_matrix <- species_count_matrix %>% 
+  select(-HaulID, -Exp_or_Cont, -days_since_last_haul, -design, -location_exposure) %>% 
+  diversity() %>% 
+  as_tibble()
+
+#re-attach metadata
+trap_diversity <- species_count_matrix %>% 
+  select(HaulID, Exp_or_Cont, days_since_last_haul, design, location_exposure) %>% 
+  bind_cols(diversity_matrix)
+
+#boxplot of Shannon index
+trap_diversity %>% 
+  ggplot(aes(x = Exp_or_Cont, y= value, colour = Exp_or_Cont)) +
+  geom_boxplot() +
+  geom_point() +
+  labs(x= "", y = "Shannon diversity index")
+
+#plot pairs
+trap_diversity %>% 
+  mutate(HaulID_mod = str_sub(HaulID, start = 2)) %>% 
+  ggplot(aes(x=Exp_or_Cont, y = value, colour = Exp_or_Cont)) +
+  geom_point() +
+  geom_line(aes(group = HaulID_mod))
+
+#call function to get diagnostic plots and t.test
+testing_2sample_sig_diff(data = trap_diversity, variable = 'value', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+
+trap_diversity %>% 
+  wilcox.test(data = ., value ~ Exp_or_Cont, paired = TRUE)
+```
+
+## Alternative species diversity comparison, zeros excluded
+```{r compare effective number of species, zeros excluded}
+#calculate effective number of species by transforming Shannon index (see http://www.loujost.com/Statistics%20and%20Physics/Diversity%20and%20Similarity/How%20to%20compare%20the%20diversities%20of%20two%20communities.htm)
+
+trap_diversity <- trap_diversity %>% 
+  mutate(eff_diversity = exp(value))
+
+#website and associated paper (http://www.loujost.com/Statistics%20and%20Physics/Diversity%20and%20Similarity/JostEntropy%20AndDiversity.pdf) says that it is better to compare effective diversity, so try this method too. Note that comparing paired diversity indices also seems to be a justifiable method judging by some researchgate conversations.
+
+#Boxplot of effective diversity
+trap_diversity %>% 
+  ggplot(aes(x = Exp_or_Cont, y= eff_diversity, colour = Exp_or_Cont)) +
+  geom_boxplot() +
+  geom_point() +
+  labs(x= "", y = "Effective diversity")
+
+#plot pairs
+trap_diversity %>% 
+  mutate(HaulID_mod = str_sub(HaulID, start = 2)) %>% 
+  ggplot(aes(x=Exp_or_Cont, y = eff_diversity, colour = Exp_or_Cont)) +
+  geom_point() +
+  geom_line(aes(group = HaulID_mod))
+  
+#call function to get diagnostic plots and t.test
+testing_2sample_sig_diff(data = trap_diversity, variable = 'eff_diversity', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+
+trap_diversity %>% 
+  wilcox.test(data = ., eff_diversity ~ Exp_or_Cont, paired = TRUE)
+```

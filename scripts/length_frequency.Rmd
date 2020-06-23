@@ -1,0 +1,303 @@
+---
+title: "Length-frequency"
+author: "Jason Flower"
+date: "23/06/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(tidyverse)
+library(knitr)
+library(paletteer)
+library(ggthemes)
+library(cowplot)
+
+source("../functions/ks_test_ecdf_generic.R") #for Kolmogorov-Smirnov tests and ECDF plots
+source("../functions/ks_test_ecdf.R") #for species K-S tests
+```
+
+```{r data import and tidying, message=FALSE}
+#full dataset (each fish)
+traps <- read_csv("../data/traps_data.csv", col_types = cols_only(
+  TrapID = col_character(),
+  Surveyors = col_character(),
+  Length_cm = col_double(),
+  LengthType_FL_TL = col_character(),
+  Weight_Grams = col_double(),
+  sciname = col_character(),
+  Date_YMD = col_date(format = ""),
+  Exp_or_Cont = col_character(),
+  design = col_character(),
+  Deep_Shallow = col_character(),
+  days_since_last_haul = col_double(),
+  common = col_character(),
+  family = col_character(),
+  N_coord = col_double(),
+  W_coord = col_double(),
+  location_exposure = col_character(),
+  depth_m = col_double(),
+  zero_or_1_fish = col_double()
+))
+
+#same dataset, zero fish hauls excluded
+traps_no_zeros <- traps %>% 
+  filter(zero_or_1_fish != 0)
+
+#to get only paired trap data, summarise to get mean length for each trap, spread the data, and then use na.omit to drop any traps that don't have a mean length value for both Control and Experimental. Gather the data back together
+traps_paired <- traps %>% 
+  group_by(Date_YMD, TrapID, Exp_or_Cont) %>%
+  summarise(Length_mean = mean(Length_cm)) %>%
+  #filter(Length_mean != 0) %>%
+  mutate(TrapNo = str_extract(TrapID, "\\d+")) %>%
+  ungroup() %>%
+  select(-TrapID) %>% #need to remove this otherwise spread doesn't work as needed
+  spread(Exp_or_Cont, Length_mean) %>%
+  na.omit() %>%
+  gather(key = "Exp_or_Cont", value = "Length_mean", c("Control", "Experimental")) %>%
+  #rebuild TrapID code
+  mutate(TrapID = str_c(str_sub(Exp_or_Cont, 1,1), TrapNo)) %>%
+  select(-TrapNo) %>%
+  distinct(TrapID, Date_YMD) %>%
+  inner_join(traps)
+
+#make a dataset excluding the traps hauls with no fish
+traps_paired_no_zeros <- traps %>% 
+  filter(common != "No fish") %>%
+  group_by(Date_YMD, TrapID, Exp_or_Cont) %>%
+  summarise(Length_mean = mean(Length_cm)) %>%
+  #filter(Length_mean != 0) %>%
+  mutate(TrapNo = str_extract(TrapID, "\\d+")) %>%
+  ungroup() %>%
+  select(-TrapID) %>% #need to remove this otherwise spread doesn't work as needed
+  spread(Exp_or_Cont, Length_mean) %>%
+  na.omit() %>%
+  gather(key = "Exp_or_Cont", value = "Length_mean", c("Control", "Experimental")) %>%
+  #rebuild TrapID code
+  mutate(TrapID = str_c(str_sub(Exp_or_Cont, 1,1), TrapNo)) %>%
+  select(-TrapNo) %>%
+  distinct(TrapID, Date_YMD) %>%
+  inner_join(traps)
+
+#import data summarized at the haul level
+trap_hauls <- read_csv("../data/traps_hauls.csv", col_types = cols_only(
+  TrapID = col_character(),
+  Date_YMD = col_date(format = ""),
+  Exp_or_Cont = col_character(),
+  design = col_character(),
+  days_since_last_haul = col_double(),
+  depth_m = col_double(),
+  N_coord = col_double(),
+  W_coord = col_double(),
+  location_exposure = col_character(),
+  mean_length_cm = col_double(),
+  total_biomass_kg = col_double(),
+  no_fish = col_double(),
+  no_species = col_double()
+))
+
+#summarize data for hauls
+trap_hauls_no_zero <- traps_no_zeros %>% 
+  group_by(TrapID, Date_YMD, Exp_or_Cont) %>% 
+  summarise(mean_length_cm = mean(Length_cm), total_biomass_kg = sum(Weight_Grams)/1000, no_fish = sum(zero_or_1_fish), no_species = n_distinct(sciname), depth_m = mean(depth_m), days_since_last_haul = mean(days_since_last_haul)) %>%
+  mutate(no_species = case_when(no_fish == 0 ~ 0,
+                                TRUE ~ as.numeric(no_species))) %>% 
+  ungroup()
+
+trap_hauls_paired <- traps_paired %>% 
+  group_by(TrapID, Date_YMD, Exp_or_Cont) %>% 
+  summarise(mean_length_cm = mean(Length_cm), total_biomass_kg = sum(Weight_Grams)/1000, no_fish = sum(zero_or_1_fish), no_species = n_distinct(sciname), depth_m = mean(depth_m), days_since_last_haul = mean(days_since_last_haul)) %>%
+  #need this otherwise traps hauls with no fish are counted as having 1 species
+  mutate(no_species = case_when(no_fish == 0 ~ 0,
+                                TRUE ~ as.numeric(no_species))) %>% 
+  ungroup()
+
+trap_hauls_paired_no_zeros <- traps_paired_no_zeros %>% 
+  group_by(TrapID, Date_YMD, Exp_or_Cont) %>% 
+  summarise(mean_length_cm = mean(Length_cm), total_biomass_kg = sum(Weight_Grams)/1000, no_fish = sum(zero_or_1_fish), no_species = n_distinct(sciname), depth_m = mean(depth_m), days_since_last_haul = mean(days_since_last_haul)) %>%
+  #need this otherwise traps hauls with no fish are counted as having 1 species
+  mutate(no_species = case_when(no_fish == 0 ~ 0,
+                                TRUE ~ as.numeric(no_species))) %>% 
+  ungroup()
+```
+
+## Length-frequency histogram, paired trap hauls excluding zeros
+```{r length-frequency histogram and Kolmogorov-Smirnov test}
+traps_paired_no_zeros %>% 
+  filter(Length_cm<50) %>% 
+  ggplot(aes(x=Length_cm, fill= Exp_or_Cont)) +
+    geom_histogram(binwidth = 1) +    
+    theme_bw() +
+    guides(fill = FALSE) +
+    theme(axis.text = element_text(size = 20), axis.title = element_blank(), strip.text.x = element_text(size = 20)) +
+    facet_wrap(~Exp_or_Cont, nrow = 2) +
+  scale_fill_wsj()
+   #scale_fill_paletteer_d("ggsci::category20_d3")
+    #scale_fill_brewer(type = "div", palette = "Dark2")
+
+ggsave("../outputs/figures/length_freq_paired_simple.png", width = 16, height = 8)
+```
+
+## Length-frequency histogram, with species coloured and % above bars
+```{r length-frequency histogram with species and percent}
+#species factored data for plotting
+species_fct <- traps_paired_no_zeros %>% 
+  mutate(species_lumped = fct_lump(common, prop = 0.02)) %>%
+  filter(Length_cm<50)
+
+#control traps histogram
+control_hist_species_perc <- traps_paired_no_zeros %>% 
+  filter(Exp_or_Cont == "Control") %>% 
+  filter(Length_cm<50) %>% 
+  ggplot((aes(x=Length_cm))) +
+  stat_bin(breaks = seq(9,50,1), geom = "text", aes(label=sprintf("%0.1f",100*..count../sum(..count..))), vjust = -0.5) +
+  geom_histogram(data = filter(species_fct, Exp_or_Cont == "Control"), aes(x=Length_cm, fill = species_lumped), breaks = seq(9,50,1)) +
+  scale_fill_paletteer_d("ggsci::category20_d3") +
+  theme_bw() +
+  labs(x = NULL, y = "Number of fish", fill = "Species") 
+
+#experimental traps histogram
+exp_hist_species_perc <- traps_paired_no_zeros %>% 
+  filter(Exp_or_Cont == "Experimental") %>% 
+  filter(Length_cm<50) %>% 
+  ggplot((aes(x=Length_cm))) +
+  stat_bin(breaks = seq(9,50,1), geom = "text", aes(label=sprintf("%0.1f",100*..count../sum(..count..))), vjust = -0.5) +
+  geom_histogram(data = filter(species_fct, Exp_or_Cont == "Experimental"), aes(x=Length_cm, fill = species_lumped), breaks = seq(9,50,1)) +
+  scale_fill_paletteer_d("ggsci::category20_d3") +
+  theme_bw() +
+  labs(x = "Length (cm)", y = "Number of fish", fill = "Species")
+
+# extract the legend from one of the plots and create some space to the left of the legend
+legend <- get_legend(control_hist_species_perc + theme(legend.box.margin = margin(0, 0, 0, 12)))
+
+species_hist_plots <- plot_grid(control_hist_species_perc + theme(legend.position = "none"),
+          exp_hist_species_perc + theme(legend.position = "none"),
+          nrow = 2,
+          labels = c("(a)", "(b)"))
+
+plot_grid(species_hist_plots, legend, rel_widths = c(2, .3))
+
+ggsave("../outputs/figures/length_freq_species_perc.png", width = 16, height = 10)
+```
+
+## % of total number of fish in each 1cm size class
+```{r % fish in traps}
+#table of relative % of fish in size classes
+kable(traps_paired_no_zeros %>% 
+  mutate(binned_length = cut(Length_cm, breaks = seq(0,max(Length_cm),1))) %>% 
+  count(Exp_or_Cont, binned_length) %>% 
+  group_by(Exp_or_Cont) %>% 
+  mutate(perc_total = 100*n/sum(n)) %>% 
+  pivot_wider(names_from = Exp_or_Cont, values_from = c(perc_total, n), values_fill = list(perc_total = 0, n = 0)) %>% 
+  arrange(binned_length) %>% 
+  mutate(cum_perc_Control = cumsum(perc_total_Control), cum_perc_Exp = cumsum(perc_total_Experimental)),
+  col.names = c("Binned length (cm)", "% of total number of fish in control", "% of total number of fish in experimental", "Number in control", "Number in experimental", "Cumulative % total in control", "Cumulative % total in experimental"),
+  caption = "Table of relative % of fish in control and experimental traps from each 1 cm size class")
+```
+
+## Kolmogorov-Smirnov test for all paired hauls excluding zeros
+```{r K-S tests}
+#all paired traps excluding zeros
+ks_testing_generic(traps_paired_no_zeros)
+```
+
+## Kolmogorov-Smirnov test for all paired hauls excluding zeros, fish less than 20cm length
+```{r K-S tests less than 20cm}
+#all paired traps excluding zeros, fish less than 20 cm length
+traps_paired_no_zeros %>% 
+  filter(Length_cm <20) %>% 
+  ks_testing_generic()
+```
+
+## Kolmogorov-Smirnov test for all paired hauls excluding zeros, fish less than 15 cm length
+```{r K-S tests less than 15cm}
+#all paired traps excluding zeros, fish less than 15 cm length
+traps_paired_no_zeros %>% 
+  filter(Length_cm <15) %>% 
+  ks_testing_generic()
+```
+
+## Species Kolmogorov-Smirnov tests
+```{r ks tests species}
+#Kolmogorov-Smirnov tests to see if length-frequency distributions of species are the same. Using only species with more than 10 samples in both control and experimental traps - see Razali and Wah 2011 for discussion of low power of tests at small sample sizes
+#Also plotting empirical cumulative distribution function and D-value which is used to calculate K-S test significance
+  
+#get list of species that have at least 10 individuals in both control and experimental traps
+species_more_than_10_both_traps <- traps %>% 
+  filter(common != "No fish") %>%
+  group_by(common, Exp_or_Cont) %>% 
+  summarize(n=n()) %>%
+  filter(n>10) %>% 
+  ungroup %>% 
+  spread(Exp_or_Cont, n) %>% 
+  na.omit() %>% 
+  gather(key = "Exp_or_Cont", value = "n", c("Control", "Experimental")) %>% 
+  distinct(common) %>% 
+  pull()
+
+ecdf_hist_plots<- traps %>% 
+  filter(common %in% species_more_than_10_both_traps) %>% 
+  #this splits the data into multiple dataframes corresponding to each species
+  split(.$common) %>% 
+  map(~ks_testing(data = .))
+
+iwalk(ecdf_hist_plots, ~{
+     pdf(paste0("../outputs/figures/species_ecdf_hist/", .y, ".pdf") )
+     print(.x)
+     dev.off()
+})
+```
+
+## Length-frequency plots for short, medium and long soak times
+```{r l-f soak time}
+soak_time_lengt_freq_allplots <- traps_paired_no_zeros %>% 
+  filter(Length_cm < 50) %>% 
+  mutate(soak_time_fct = case_when(days_since_last_haul<8 ~ "short",
+                                   days_since_last_haul>8 & days_since_last_haul<15 ~ "medium",
+                                   days_since_last_haul >15 ~ "long")) %>%
+  mutate(soak_time_fct = as.factor(soak_time_fct),
+         soak_time_fct = fct_relevel(soak_time_fct, c("short", "medium", "long"))) %>% 
+  mutate(species_lumped = fct_lump(common, prop = 0.02)) %>%
+  group_split(soak_time_fct) %>% 
+  map(~ggplot(., aes(x=Length_cm, fill = species_lumped)) +
+  geom_histogram(breaks = seq(9,50,1)) +
+  scale_fill_paletteer_d("ggsci::category20_d3") +
+  #discrete_scale("fill", "manual", colorRampPalette(brewer.pal(9, "Set1")),  guide = guide_legend(ncol = 1, title.position = "top")) +
+  labs(x = "Length (cm)", y = "Number of fish")) 
+
+#for combined legend with 3 plots (from: https://wilkelab.org/cowplot/articles/shared_legends.html)
+#note I need to definte the package cowplot:: because sjplot also has plot_grid but must work slightly differently
+
+legend <- get_legend(
+  # create some space to the left of the legend
+  soak_time_lengt_freq_allplots[[1]] + guides(fill=guide_legend(title="Species"))
+)
+
+combined_plot <- cowplot::plot_grid(soak_time_lengt_freq_allplots[[1]] + theme(legend.position="none", axis.title.x = element_blank(), axis.title.y = element_blank()),
+                   soak_time_lengt_freq_allplots[[2]] + theme(legend.position="none", axis.title.x = element_blank(), axis.title.y = element_blank()),
+                   soak_time_lengt_freq_allplots[[3]] + theme(legend.position="none", axis.title.y = element_blank()),
+                   align = "v",
+                   ncol = 1,
+                   scale = 0.92,
+                   labels = "auto")  
+
+cowplot::plot_grid(combined_plot, legend, rel_widths = c(1,0.1)) +
+  draw_label("Number of fish", x= 0, y=0.5, vjust= 1.5, angle=90)
+
+ggsave("../outputs/figures/soak_time_length_freq_species.png", width = 16, height = 12)
+
+#get number of trap hauls in each soak time grouping
+traps_paired_no_zeros %>% 
+  filter(Length_cm>0) %>% 
+  filter(Length_cm < 50) %>% 
+  mutate(soak_time_fct = case_when(days_since_last_haul<8 ~ "short",
+                                   days_since_last_haul>8 & days_since_last_haul<15 ~ "medium",
+                                   days_since_last_haul >15 ~ "long")) %>% 
+  mutate(soak_time_fct = as.factor(soak_time_fct)) %>% 
+  group_by(TrapID, Date_YMD, Exp_or_Cont) %>% 
+  count(soak_time_fct) %>% 
+  group_by(soak_time_fct) %>% 
+  tally()
+```
+

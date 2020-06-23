@@ -1,0 +1,273 @@
+---
+title: "Catch characterization and comparison"
+author: "Jason Flower"
+date: "16/06/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(tidyverse)
+library(knitr)
+library(lubridate)
+library(paletteer)
+library(ggthemes)
+```
+
+```{r data import and tidying, message=FALSE}
+#full dataset (each fish)
+traps <- read_csv("../data/traps_data.csv", col_types = cols_only(
+  TrapID = col_character(),
+  Surveyors = col_character(),
+  Length_cm = col_double(),
+  LengthType_FL_TL = col_character(),
+  Weight_Grams = col_double(),
+  sciname = col_character(),
+  Date_YMD = col_date(format = ""),
+  Exp_or_Cont = col_character(),
+  design = col_character(),
+  Deep_Shallow = col_character(),
+  days_since_last_haul = col_double(),
+  common = col_character(),
+  family = col_character(),
+  N_coord = col_double(),
+  W_coord = col_double(),
+  location_exposure = col_character(),
+  depth_m = col_double(),
+  zero_or_1_fish = col_double()
+))
+
+#same dataset, zero fish hauls excluded
+traps_no_zeros <- traps %>% 
+  filter(zero_or_1_fish != 0)
+
+#to get only paired trap data, summarise to get mean length for each trap, spread the data, and then use na.omit to drop any traps that don't have a mean length value for both Control and Experimental. Gather the data back together
+traps_paired <- traps %>% 
+  group_by(Date_YMD, TrapID, Exp_or_Cont) %>%
+  summarise(Length_mean = mean(Length_cm)) %>%
+  #filter(Length_mean != 0) %>%
+  mutate(TrapNo = str_extract(TrapID, "\\d+")) %>%
+  ungroup() %>%
+  select(-TrapID) %>% #need to remove this otherwise spread doesn't work as needed
+  spread(Exp_or_Cont, Length_mean) %>%
+  na.omit() %>%
+  gather(key = "Exp_or_Cont", value = "Length_mean", c("Control", "Experimental")) %>%
+  #rebuild TrapID code
+  mutate(TrapID = str_c(str_sub(Exp_or_Cont, 1,1), TrapNo)) %>%
+  select(-TrapNo) %>%
+  distinct(TrapID, Date_YMD) %>%
+  inner_join(traps)
+
+#make a dataset excluding the traps hauls with no fish
+traps_paired_no_zeros <- traps %>% 
+  filter(common != "No fish") %>%
+  group_by(Date_YMD, TrapID, Exp_or_Cont) %>%
+  summarise(Length_mean = mean(Length_cm)) %>%
+  #filter(Length_mean != 0) %>%
+  mutate(TrapNo = str_extract(TrapID, "\\d+")) %>%
+  ungroup() %>%
+  select(-TrapID) %>% #need to remove this otherwise spread doesn't work as needed
+  spread(Exp_or_Cont, Length_mean) %>%
+  na.omit() %>%
+  gather(key = "Exp_or_Cont", value = "Length_mean", c("Control", "Experimental")) %>%
+  #rebuild TrapID code
+  mutate(TrapID = str_c(str_sub(Exp_or_Cont, 1,1), TrapNo)) %>%
+  select(-TrapNo) %>%
+  distinct(TrapID, Date_YMD) %>%
+  inner_join(traps)
+
+#import data summarized at the haul level
+trap_hauls <- read_csv("../data/traps_hauls.csv", col_types = cols_only(
+  TrapID = col_character(),
+  Date_YMD = col_date(format = ""),
+  Exp_or_Cont = col_character(),
+  design = col_character(),
+  days_since_last_haul = col_double(),
+  depth_m = col_double(),
+  N_coord = col_double(),
+  W_coord = col_double(),
+  location_exposure = col_character(),
+  mean_length_cm = col_double(),
+  total_biomass_kg = col_double(),
+  no_fish = col_double(),
+  no_species = col_double()
+))
+
+#summarize data for hauls
+trap_hauls_no_zero <- traps_no_zeros %>% 
+  group_by(TrapID, Date_YMD, Exp_or_Cont) %>% 
+  summarise(mean_length_cm = mean(Length_cm), total_biomass_kg = sum(Weight_Grams)/1000, no_fish = sum(zero_or_1_fish), no_species = n_distinct(sciname), depth_m = mean(depth_m), days_since_last_haul = mean(days_since_last_haul)) %>%
+  mutate(no_species = case_when(no_fish == 0 ~ 0,
+                                TRUE ~ as.numeric(no_species))) %>% 
+  ungroup()
+
+trap_hauls_paired <- traps_paired %>% 
+  group_by(TrapID, Date_YMD, Exp_or_Cont) %>% 
+  summarise(mean_length_cm = mean(Length_cm), total_biomass_kg = sum(Weight_Grams)/1000, no_fish = sum(zero_or_1_fish), no_species = n_distinct(sciname), depth_m = mean(depth_m), days_since_last_haul = mean(days_since_last_haul)) %>%
+  #need this otherwise traps hauls with no fish are counted as having 1 species
+  mutate(no_species = case_when(no_fish == 0 ~ 0,
+                                TRUE ~ as.numeric(no_species))) %>% 
+  ungroup()
+
+trap_hauls_paired_no_zeros <- traps_paired_no_zeros %>% 
+  group_by(TrapID, Date_YMD, Exp_or_Cont) %>% 
+  summarise(mean_length_cm = mean(Length_cm), total_biomass_kg = sum(Weight_Grams)/1000, no_fish = sum(zero_or_1_fish), no_species = n_distinct(sciname), depth_m = mean(depth_m), days_since_last_haul = mean(days_since_last_haul)) %>%
+  #need this otherwise traps hauls with no fish are counted as having 1 species
+  mutate(no_species = case_when(no_fish == 0 ~ 0,
+                                TRUE ~ as.numeric(no_species))) %>% 
+  ungroup()
+
+#create list with all 4 summarized data frames in so we can loop over them later
+trap_haul_list <- list(trap_hauls, trap_hauls_no_zero, trap_hauls_paired, trap_hauls_paired_no_zeros)
+
+#set positions so that paired traps are next to each other on plot
+positions <- c("C1", "E1", "C2", "E2", "C3", "E3", "C4", "E4", "C5", "E5", "C6", "E6", "C7", "E7", "C8", "E8", "C9", "E9", "C10", "E10", "C11", "E11", "C12", "E12", "C13", "E13", "C14", "E14", "C15", "E15", "C16", "E16", "C17", "E17", "C18", "E18", "C19", "E19", "C20", "E20")
+```
+## Catch characterization
+```{r catch characterization}
+#basic summaries for full dataset
+kable(traps %>%
+  summarise(Days_at_sea = n_distinct(Date_YMD),  no_hauls = n_distinct(Date_YMD, TrapID), No_families = n_distinct(family, na.rm = TRUE), No_species = n_distinct(sciname, na.rm = TRUE)),
+  col.names = c("Days at sea", "Number of hauls", "Number of fish familes", "No of fish species"),
+  caption = "For all trap data")
+
+kable(traps %>%
+        filter(common == "No fish") %>% 
+        group_by(Exp_or_Cont) %>% 
+        summarise(n()),
+      col.names = c("Experimental or control?", "Number of zero fish hauls"),
+      caption = "For all trap data")
+
+kable(traps %>% 
+        group_by(Exp_or_Cont, TrapID) %>% 
+        summarise(depth = mean(depth_m)) %>% 
+        ungroup() %>% 
+        group_by(Exp_or_Cont) %>% 
+        summarise(mean(depth, na.rm = TRUE), sd(depth, na.rm = TRUE)),
+      col.names = c("Experimental or control?", "Mean trap depth(m)", "SD trap depth"),
+      caption = "For all trap data")
+
+kable(traps %>%
+  group_by(Exp_or_Cont) %>%
+  summarise(hauls = n_distinct(Date_YMD, TrapID), no_measurements = sum(zero_or_1_fish), no_species = n_distinct(sciname, na.rm = TRUE)),
+  col.names = c("Experimental or control?", "Total number of hauls", "No. of measurements", "No. of species"),
+  caption = "For all trap data")
+
+#basic summaries for paired hauls data
+kable(traps_paired %>%
+  summarise(Days_at_sea = n_distinct(Date_YMD),  no_hauls = n_distinct(Date_YMD, TrapID), No_families = n_distinct(family, na.rm = TRUE), No_species = n_distinct(sciname, na.rm = TRUE)),
+  col.names = c("Days at sea", "Number of hauls", "Number of fish familes", "No of fish species"),
+  caption = "For paired trap data")
+
+kable(traps_paired %>% 
+         filter(common == "No fish") %>% 
+        group_by(Exp_or_Cont) %>% 
+        summarise(n()),
+      col.names = c("Experimental or control?", "Number of zero fish hauls"),
+      caption = "For paired trap data")
+
+kable(traps_paired %>% 
+        group_by(Exp_or_Cont, TrapID) %>% 
+        summarise(depth = mean(depth_m)) %>% 
+        ungroup() %>% 
+        group_by(Exp_or_Cont) %>% 
+        summarise(mean(depth, na.rm = TRUE), sd(depth, na.rm = TRUE)),
+      col.names = c("Experimental or control?", "Mean trap depth(m)", "SD trap depth"),
+      caption = "For paired trap data")
+
+kable(traps_paired %>%
+  group_by(Exp_or_Cont) %>%
+  summarise(hauls = n_distinct(Date_YMD, TrapID), no_measurements = sum(zero_or_1_fish), no_species = n_distinct(sciname, na.rm = TRUE)),
+  col.names = c("Experimental or control?", "Total number of hauls", "No. of measurements", "No. of species"),
+  caption = "For paired trap data")
+
+kable(traps_no_zeros %>% 
+        group_by(Exp_or_Cont) %>% 
+        summarise(mean(Length_cm), sd(Length_cm), mean(Weight_Grams), sd(Weight_Grams)),
+      col.names = c("Experimental or control?", "Mean fish length (cm)", "SD length", "Mean fish weigh (g)", "SD weight"),
+      caption = "For all trap data except zero hauls")
+
+kable(traps_paired_no_zeros %>% 
+        group_by(Exp_or_Cont) %>% 
+        summarise(mean(Length_cm), sd(Length_cm), mean(Weight_Grams), sd(Weight_Grams)),
+      col.names = c("Experimental or control?", "Mean fish length (cm)", "SD length", "Mean fish weigh (g)", "SD weight"),
+      caption = "For paired trap data except zero hauls")
+```
+```{r haul averages}
+kable(trap_hauls %>% 
+        group_by(Exp_or_Cont) %>%
+        summarise(mean_soak = mean(days_since_last_haul), sd_soak = sd(days_since_last_haul), mean_no_fish = mean(no_fish), sd_no_fish = sd(no_fish), mean_length = mean(mean_length_cm), sd_length = sd(mean_length_cm), mean_biomass = mean(total_biomass_kg), sd_biomass = sd(total_biomass_kg), mean_no_species = mean(no_species), sd_no_species = sd(no_species)),
+      col.names = c("Experimental or control?", "Mean soak time (days)", "SD soak time", "Mean no. fish", "SD no. fish", "Mean length (cm)", "SD length", "Mean total biomass (kg)", "SD biomass", "Mean no. species", "SD no. species"),
+      caption = "All trap hauls")
+
+kable(trap_hauls_paired %>% 
+        group_by(Exp_or_Cont) %>%
+        summarise(mean_soak = mean(days_since_last_haul), sd_soak = sd(days_since_last_haul), mean_no_fish = mean(no_fish), sd_no_fish = sd(no_fish), mean_length = mean(mean_length_cm), sd_length = sd(mean_length_cm), mean_biomass = mean(total_biomass_kg), sd_biomass = sd(total_biomass_kg), mean_no_species = mean(no_species), sd_no_species = sd(no_species)),
+      col.names = c("Experimental or control?", "Mean soak time (days)", "SD soak time", "Mean no. fish", "SD no. fish", "Mean length (cm)", "SD length", "Mean total biomass (kg)", "SD biomass", "Mean no. species", "SD no. species"),
+      caption = "Paired trap hauls")
+
+kable(trap_hauls_no_zero %>% 
+        group_by(Exp_or_Cont) %>%
+        summarise(mean_soak = mean(days_since_last_haul), sd_soak = sd(days_since_last_haul), mean_no_fish = mean(no_fish), sd_no_fish = sd(no_fish), mean_length = mean(mean_length_cm), sd_length = sd(mean_length_cm), mean_biomass = mean(total_biomass_kg), sd_biomass = sd(total_biomass_kg), mean_no_species = mean(no_species), sd_no_species = sd(no_species)),
+      col.names = c("Experimental or control?", "Mean soak time (days)", "SD soak time", "Mean no. fish", "SD no. fish", "Mean length (cm)", "SD length", "Mean total biomass (kg)", "SD biomass", "Mean no. species", "SD no. species"),
+      caption = "All trap hauls excluding zero catch hauls")
+
+kable(trap_hauls_paired_no_zeros %>% 
+        group_by(Exp_or_Cont) %>%
+        summarise(mean_soak = mean(days_since_last_haul), sd_soak = sd(days_since_last_haul), mean_no_fish = mean(no_fish), sd_no_fish = sd(no_fish), mean_length = mean(mean_length_cm), sd_length = sd(mean_length_cm), mean_biomass = mean(total_biomass_kg), sd_biomass = sd(total_biomass_kg), mean_no_species = mean(no_species), sd_no_species = sd(no_species)),
+      col.names = c("Experimental or control?", "Mean soak time (days)", "SD soak time", "Mean no. fish", "SD no. fish", "Mean length (cm)", "SD length", "Mean total biomass (kg)", "SD biomass", "Mean no. species", "SD no. species"),
+      caption = "Paired trap hauls excluding zero catch hauls")
+```
+
+## Trap hauls figure
+```{r trap haul dates figure}
+#which traps were hauled on each date
+traps %>%
+  group_by(Date_YMD, TrapID) %>%
+  summarise(n()) %>%
+  ggplot(aes(x = Date_YMD, y = TrapID)) +
+  geom_point() +
+  scale_x_date(breaks = traps$Date_YMD, date_labels = "%d %b") +
+  scale_y_discrete(limits = positions) +
+  labs(x = "Date", y = "Trap ID") +
+  theme_hc() +
+  theme(axis.text.x = element_text(angle=45, vjust = 0.5))
+
+ggsave("../outputs/figures/trap_haul_dates.png", width = 16, height = 8)
+```
+
+## Catch composition figure
+```{r species composition plot}
+traps %>%
+  filter(!is.na(family)) %>%
+  group_by(common, family) %>%
+  summarise(no_fish = n()) %>%
+  ungroup() %>%
+  mutate(prop_fish = 100*no_fish/sum(no_fish)) %>%
+  filter(prop_fish>1) %>%
+  #filter(min_rank(desc(prop_fish))<11) %>% #filter for top 10 species
+  ggplot(aes(x= reorder(common,prop_fish), y = prop_fish, fill = family)) +
+  geom_bar(stat = "identity", width = 0.8) +
+  theme_bw() +
+  theme(legend.position = c(0.8, 0.5), legend.title = element_text(size = 20), axis.text = element_text(size = 20), axis.title = element_text(size = 26), legend.text = element_text(size = 20)) +
+  guides(fill = guide_legend(title = "Family")) +
+  labs(x = "Species name", y = "% of total catch") + 
+  scale_fill_paletteer_d("ggsci::category20_d3") +
+  coord_flip()
+
+ggsave("../outputs/figures/species_perc.png", width = 16, height = 8)
+```
+
+## Proportion of each species in traps
+```{r proportion of species in traps}
+kable(traps %>%
+  filter(!is.na(family)) %>%
+  group_by(common, family) %>%
+  summarise(no_fish = n()) %>%
+  ungroup() %>%
+  mutate(prop_fish = 100*no_fish/sum(no_fish)) %>%
+  arrange(desc(prop_fish)),
+  col.names = c("Common name", "Family", "Total number of fish", "Proportion of total as %"),
+  caption = "Proportion of each fish species in catch (all catch combined)")
+```
