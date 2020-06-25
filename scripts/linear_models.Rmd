@@ -1,0 +1,364 @@
+---
+title: "Trap experiment model"
+author: "Jason Flower"
+date: "9 August 2018"
+output:
+  html_document:
+    df_print: paged
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+```{r libraries, message=FALSE}
+library(tidyverse)
+library(lubridate)
+library(ggthemes)
+library(cowplot)
+library(knitr)
+library(broom.mixed) #this and dotwhisker for coefficient estimate plots
+library(dotwhisker)
+library(car)
+library(MASS)
+library(sjPlot) #for model diagnostic plots, model parameters tables, and model prediction plots                                                
+library(lme4)
+library(lmerTest)
+library(MuMIn) #dredge function for getting all possible model options
+library(formula.tools) #for extracting model formulas from list
+library(gplots) #for outputting text as plots so it can go in pdf file with plots
+library(ggeffects) #for model prediction values
+library(performance) #for model diagnostics (overdispersion test)
+library(rstanarm)
+
+source("../functions/explor_plots_func.R") #function for creating all exploratory plots for explanatory variables that are factors
+source("../functions/explor_contin_plots_func.R") #function for creating all exploratory plots for explanatory variables that are continuous
+source("../functions/data_distributions.R") #function to check data distributions before modelling
+source("../functions/all_models.R") #function for running through all possible combinations of fixed effects in LMM and outputting models, plots and diagnostics to pdf
+source("../functions/all_models_glmer.R") ##function for running through all possible combinations of fixed effects in GLMM and outputting models, plots and diagnostics to pdf
+```
+
+```{r data import and setup}
+#import data summarized at the haul level
+trap_haul <- read_csv("../data/traps_hauls.csv", col_types = cols_only(
+  TrapID = col_character(),
+  Date_YMD = col_date(format = ""),
+  Exp_or_Cont = col_character(),
+  design = col_character(),
+  days_since_last_haul = col_double(),
+  depth_m = col_double(),
+  N_coord = col_double(),
+  W_coord = col_double(),
+  location_exposure = col_character(),
+  mean_length_cm = col_double(),
+  total_biomass_kg = col_double(),
+  no_fish = col_double(),
+  no_species = col_double()
+))
+
+#going to filter out zero trap hauls we don't know if they are actual zeros or poached traps.
+#also adding log(biomass) because biomass is right skewed (long tail to the right)
+trap_haul_no_zero <- trap_haul %>% 
+  filter(no_fish != 0) %>% 
+  mutate(log_biomass = log(total_biomass_kg+1)) %>% 
+  mutate(log_days_since_last_haul = log(days_since_last_haul))
+
+#subset of data with depth records
+trap_haul_no_zero_depth <- trap_haul_no_zero %>% 
+  filter(!is.na(depth_m))
+```
+
+
+```{r exploratory plots of every response variable vs every explanatory variable}
+  #using code from https://aosmith.rbind.io/2018/08/20/automating-exploratory-plots/
+
+#make vectors containing the names of response and explanatory variables. Keep factors and continuous explanatory variables separate as we plot the first with boxplots and second as scatterplots
+response <- set_names(c("mean_length_cm", "total_biomass_kg", "no_fish", "no_species"))
+explan_factors <- set_names(c("TrapID", "Exp_or_Cont", "design", "location_exposure"))
+explan_continuous <- set_names(c("Date_YMD", "days_since_last_haul", "depth_m", "N_coord", "W_coord"))
+
+#make plots of all 4 response variables vs. all 4 factor explanatory variables
+explan_plots_factors <- map(response, function(response){
+  map(explan_factors, function(explan_factors){
+    explor_plots_func(data = trap_haul_no_zero, x = explan_factors, y = response)
+  })
+}) 
+
+#output plots to pdf, with each pdf file containing all plots for one response variable
+iwalk(explan_plots_factors, ~{
+     pdf(paste0("../outputs/response_plots/", .y, "_boxplots.pdf") )
+     print(.x)
+     dev.off()
+})
+
+#make plots of all 4 response variables vs. all 3 continuous explanatory variables
+explan_plots_continuous <- map(response, function(response){
+  map(explan_continuous, function(explan_continuous){
+    explor_plots_func_continuous(data = trap_haul_no_zero, x = explan_continuous, y = response)
+  })
+})
+
+#output plots to pdf, with each pdf file containing all plots for one response variable
+iwalk(explan_plots_continuous, ~{
+     pdf(paste0("../outputs/response_plots/", .y, "_scatterplots.pdf") )
+     print(.x)
+     dev.off()
+})
+
+#plots of all response variables vs soak time with soak time as factor
+soaktime_boxplots <- map(response, function(response){
+    explor_plots_func(data = mutate(trap_haul_no_zero, soak_time_fct = as.factor(days_since_last_haul)), x = "soak_time_fct", y = response)
+}) 
+
+#output plots to pdf
+     pdf("../outputs/response_plots/soaktime_boxplots.pdf")
+     print(soaktime_boxplots)
+     dev.off()
+     
+#plots of all response variables vs depth as factor
+depth_boxplots <- map(response, function(response){
+    explor_plots_func(data = mutate(trap_haul_no_zero, depth_fct = as.factor(depth_m)), x = "depth_fct", y = response)
+}) 
+
+#output plots to pdf
+     pdf("../outputs/response_plots/depth_boxplots.pdf")
+     print(depth_boxplots)
+     dev.off()
+```
+
+```{r correlations}
+trap_haul_no_zero %>%
+  dplyr::select(days_since_last_haul, depth_m) %>% 
+  cor(., use = "complete.obs")
+
+trap_haul_no_zero %>%
+  dplyr::select(days_since_last_haul, depth_m, design, Exp_or_Cont, location_exposure) %>% 
+  GGally::ggpairs()
+```
+
+
+```{r LMM length models}
+
+#build model with all possible fixed-effects that will be passed to function to run through all combinations of fixed-effects terms
+length_model_max <- lmer(mean_length_cm ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", REML = FALSE)
+
+all_models(dataset = trap_haul_no_zero, full_model = length_model_max, response_var = "mean_length_cm", response_var_name_plot = "mean fish length (cm)", filename = "mean_length_lmm")
+
+#Length model with depth as additional fixed-effect, using subset of data which has depth observations
+
+#build model with all possible fixed-effects that will be passed to function to run through all combinations of fixed-effects terms
+length_depth_model_max <- lmer(mean_length_cm ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + depth_m + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero_depth, na.action = "na.fail", REML = FALSE)
+
+all_models(dataset = trap_haul_no_zero_depth, full_model = length_depth_model_max, response_var = "mean_length_cm", response_var_name_plot = "mean fish length (cm)", filename = "mean_length_depth_lmm")
+```
+
+```{r LMM biomass models}
+#log+1 biomass
+
+#build model with all possible fixed-effects that will be passed to function to run through all combinations of fixed-effects terms
+biomass_log_model_max <- lmer(log_biomass ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", REML = FALSE)
+
+all_models(dataset = trap_haul_no_zero, full_model = biomass_log_model_max, response_var = "log_biomass", response_var_name_plot = "log+1 fish biomass (kg)", filename = "biomass_lmm")
+
+#Biomass model with depth as additional fixed-effect, using subset of data which has depth observations
+
+#build model with all possible fixed-effects that will be passed to function to run through all combinations of fixed-effects terms
+biomass_log_model_depth_max <- lmer(log_biomass ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + depth_m + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero_depth, na.action = "na.fail", REML = FALSE)
+
+all_models(dataset = trap_haul_no_zero_depth, full_model = biomass_log_model_depth_max, response_var = "log_biomass", response_var_name_plot = "log+1 fish biomass (kg)", filename = "biomass_depth_lmm")
+```
+
+```{r GLMM neg bin no. fish}
+#negative binomial model fits better than poisson - see diagnostics in chunk towards end of markdown doc
+
+#build model with all possible fixed-effects that will be passed to function to run through all combinations of fixed-effects term
+#added the "control" argument to resolve problems with model not converging: https://stats.stackexchange.com/questions/97834/warning-messages-from-mixed-model-glmer
+no_fish_glmer_nb_max <- glmer.nb(no_fish ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=10000)))
+
+all_models_glmer(dataset = trap_haul_no_zero, full_model = no_fish_glmer_nb_max, response_var = "no_fish", response_var_name_plot = "number of fish", filename = "no_fish_nb_log_soak_glmer")
+
+#Number of fish model with depth as additional fixed-effect, using subset of data which has depth observations
+
+#build model with all possible fixed-effects that will be passed to function to run through all combinations of fixed-effects terms
+no_fish_depth_glmer_nb_max <- glmer.nb(no_fish ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + depth_m + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero_depth, na.action = "na.fail", control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=10000)))
+
+all_models_glmer(dataset = trap_haul_no_zero_depth, full_model = no_fish_depth_glmer_nb_max, response_var = "no_fish", response_var_name_plot = "number of fish", filename = "no_fish_depth_nb_log_soak_glmer")
+
+#try Bayesian model to compare model estimates
+no_fish_glmer_nb_max_stan <- rstanarm::stan_glmer.nb(no_fish ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail")
+
+summary(no_fish_glmer_nb_max)
+#despite the singular fit warning, glmer.nb function gives model estimates and errors that are almost identical to the Bayesian version, so I can ignore the warning, see comment in this: https://stats.stackexchange.com/q/393901
+```
+
+```{r GLMM neg bin no. species}
+#negative binomial model fits better than poisson - see diagnostics in chunk towards end of markdown doc
+
+#build model with all possible fixed-effects that will be passed to function to run through all combinations of fixed-effects term
+#added the "control" argument to resolve problems with model not converging: https://stats.stackexchange.com/questions/97834/warning-messages-from-mixed-model-glmer
+no_species_glmer_nb_max <- glmer.nb(no_species ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=10000)))
+
+all_models_glmer(dataset = trap_haul_no_zero, full_model = no_species_glmer_nb_max, response_var = "no_species", response_var_name_plot = "number of species", filename = "no_species_nb_log_soak_glmer")
+
+#despite errors regarding singular fit, iSsingular returns FALSE and it is not overdispersed - compare to the poisson model which is overdispersed
+isSingular(no_fish_glmer_nb_max)
+
+#Number of fish model with depth as additional fixed-effect, using subset of data which has depth observations
+
+#build model with all possible fixed-effects that will be passed to function to run through all combinations of fixed-effects terms
+no_species_depth_glmer_nb_max <- glmer.nb(no_species ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + depth_m + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero_depth, na.action = "na.fail", control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=10000)))
+
+all_models_glmer(dataset = trap_haul_no_zero_depth, full_model = no_species_depth_glmer_nb_max, response_var = "no_species", response_var_name_plot = "number of species", filename = "no_species_depth_nb_log_soak_glmer")
+```
+
+```{r full model summary tables}
+#check for overdispersion in models
+global_models <- list(length_model_max, biomass_log_model_max, no_fish_glmer_nb_max, no_species_glmer_nb_max)
+map(global_models, check_overdispersion)
+
+tab_model(length_model_max, biomass_log_model_max, no_fish_glmer_nb_max, no_species_glmer_nb_max, 
+          pred.labels = c( "Intercept", "Design (V)",  "log(Soak time)", "Location (windward)", "Escape gaps (present)"),
+          dv.labels = c("Mean catch length (cm)", "log(total catch biomass (kg))", "Number of fish", "Number of species"),
+          #string.ci = "Conf. int. (95%)",
+          show.stat = TRUE,
+          show.aic = TRUE,
+          show.icc = FALSE,
+          show.re.var = FALSE,
+          p.val = "wald",
+          file = "../outputs/figures/full_models_table.html")
+```
+```{r most parsimonious model summary tables}
+#selected by backwards elimination of fixed effects for LMMs and lowest AIC for GLMMs
+
+length_parsimonious <- lmer(mean_length_cm ~ log_days_since_last_haul + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", REML = FALSE)
+
+biomass_parsimonious <- lmer(log_biomass ~ log_days_since_last_haul + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", REML = FALSE)
+
+no_fish_parsimonious <- glmer.nb(no_fish ~ location_exposure +  (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=10000)))
+
+isSingular(no_fish_parsimonious)
+check_overdispersion(no_fish_parsimonious)
+
+summary(no_fish_parsimonious)
+
+test_no_fish_pars <- rstanarm::stan_glmer.nb(no_fish ~ location_exposure + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail")
+summary(test_no_fish_pars)  
+
+no_species_parsimonious <- glmer.nb(no_species ~ log_days_since_last_haul + location_exposure + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=10000)))
+
+parsimonious_models <- list(length_parsimonious, biomass_parsimonious, no_fish_parsimonious, no_species_parsimonious)
+map(parsimonious_models, check_overdispersion)
+
+tab_model(length_parsimonious, biomass_parsimonious, no_fish_parsimonious, no_species_parsimonious, 
+          pred.labels = c("Intercept", "log(Soak time)", "Location (windward)"),
+          dv.labels = c("Mean catch length (cm)", "log(total catch biomass (kg))", "Number of fish", "Number of species"),
+          #string.ci = "Conf. int. (95%)",
+          show.stat = TRUE,
+          show.aic = TRUE,
+          show.icc = FALSE,
+          show.re.var = FALSE,
+          p.val = "wald",
+          file = "../outputs/figures/parsimonious_table.html")
+```
+
+```{r partial effects plots}
+
+pe_plot_length <- ggpredict(length_parsimonious, type = "fe", terms = "log_days_since_last_haul [n=30]") %>% 
+  mutate(soak_time = exp(x)) %>% 
+  ggplot(aes(x = soak_time, y= predicted)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.3) +
+  labs(x = "Soak time", y = "Mean length (cm)") 
+
+
+pe_plot_biomass <- ggpredict(biomass_parsimonious, type = "fe", terms = "log_days_since_last_haul [n=30]") %>% 
+  mutate(soak_time = exp(x), predicted_transformed = exp(predicted)-1, conf.low_transformed = exp(conf.low)-1, conf.high_transformed = exp(conf.high)-1) %>% 
+  ggplot(aes(x = soak_time, y= predicted_transformed)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = conf.low_transformed, ymax = conf.high_transformed), alpha = 0.3) +
+  labs(x = "Soak time", y = "Total biomass in catch (kg)")
+
+pe_plot_no_fish <- ggpredict(no_fish_parsimonious, type = "fe", terms = "location_exposure") %>% 
+ggplot(aes(x = x, y = predicted)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2) +
+  labs(x = "Location (exposure)", y = "Number of fish in catch")
+
+pe_plot_no_species <- ggpredict(no_species_parsimonious, type = "fe", terms = c("log_days_since_last_haul [n=30]", "location_exposure")) %>% 
+  mutate(soak_time  = exp(x),
+         location_exposure = group) %>% 
+  dplyr::select(-group) %>% 
+  ggplot(aes(x = soak_time, y = predicted, fill = location_exposure, colour = location_exposure)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.3) +
+  labs(x = "Soak time", y = "Number of species in catch", fill = "Location (exposure)", colour = "Location (exposure)")
+
+cowplot::plot_grid(pe_plot_length, pe_plot_biomass, pe_plot_no_fish, pe_plot_no_species, labels = "auto")
+ggsave("../outputs/figures/partial_effects.png", width = 16, height = 8)
+
+#for prediction plots with data points plotted; can drop outliers by setting scale, but then difficult to see the effect they are having:
+pe_plot_length_withdata <- pe_plot_length +
+  geom_jitter(data = trap_haul_no_zero, aes(x = days_since_last_haul, y= mean_length_cm), alpha = 0.3, width = 0.3) #+
+  #scale_y_continuous(limits = c(20,30))
+
+pe_plot_biomass_withdata <- pe_plot_biomass +
+  geom_jitter(data = trap_haul_no_zero, aes(x = days_since_last_haul, y= total_biomass_kg), alpha = 0.3, width = 0.3)# +
+  #scale_y_continuous(limits = c(0,10)
+  
+pe_plot_no_fish_withdata <- pe_plot_no_fish +
+  geom_jitter(data = trap_haul_no_zero, aes(x = location_exposure, y= no_fish), width = 0.1, alpha = 0.3)# +
+  #scale_y_continuous(limits = c(0,20))
+  
+pe_plot_no_species_withdata <- pe_plot_no_species +
+  geom_jitter(data = trap_haul_no_zero, aes(x = days_since_last_haul, y= no_species, colour = location_exposure), alpha = 0.5, width = 0.3) #+
+  #scale_y_continuous(limits = c(0,7))
+
+cowplot::plot_grid(pe_plot_length_withdata, pe_plot_biomass_withdata, pe_plot_no_fish_withdata, pe_plot_no_species_withdata, labels = "auto")
+ggsave("../outputs/figures/partial_effects_w_data.png", width = 16, height = 8)
+```
+
+```{r parsimonious models predictions}
+
+ggpredict(length_parsimonious, type = "fe", terms = "log_days_since_last_haul") %>% 
+  mutate(soak_time = exp(x))
+
+ggpredict(biomass_parsimonious, type = "fe", terms = "log_days_since_last_haul") %>% 
+  mutate(soak_time = exp(x), predicted_transformed = exp(predicted)-1, conf.low_transformed = exp(conf.low)-1, conf.high_transformed = exp(conf.high)-1)
+
+ggpredict(no_fish_parsimonious, type = "fe", terms = "location_exposure")
+
+ggpredict(no_species_parsimonious, type = "fe", terms = c("log_days_since_last_haul", "location_exposure")) %>% 
+  mutate(soak_time  = exp(x),
+         location_exposure = group)
+```
+
+```{r negative binomial model no. fish diagnostics}
+#negative binomial model might be better than poisson since data is overdispersed (variance larger than mean )
+no_fish_glmer_max <- glmer(no_fish ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", family = poisson(link = "log"), control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=10000)))
+
+no_fish_nb_max <- glmer.nb(no_fish ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=10000)))
+
+#model doesn't converge but this check of convergance suggests that result is still ok as <<0.001. See: https://stats.stackexchange.com/questions/110004/how-scared-should-we-be-about-convergence-warnings-in-lme4
+relgrad <- with(no_fish_nb_max@optinfo$derivs,solve(Hessian,gradient))
+ max(abs(relgrad))
+ 
+#compare models: https://stats.stackexchange.com/questions/311556/help-interpreting-count-data-glmm-using-lme4-glmer-and-glmer-nb-negative-binom
+lmtest::lrtest(no_fish_glmer_max, no_fish_nb_max)
+#this suggests the negative binomial model is a better fit - the log likelihood is lower (remember both numbers are negative) for glmer poisson model (and the two models are significantly different), so that model is poorer fit (see comments here for discussion of interpretation of log likelihood results: https://stats.stackexchange.com/questions/6505/likelihood-ratio-test-in-r/6515#6515)
+```
+
+```{r negative binomial model species richness diagnostics}
+#negative binomial model might be better than poisson since data is overdispersed (variance larger than mean )
+no_species_glmer_max <- glmer(no_species ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", family = poisson(link = "log"), control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=10000)))
+
+no_species_nb_max <- glmer.nb(no_species ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=10000)))
+
+#despite error warning, below tests suggest there is no singularity(?)
+isSingular(no_species_nb_max)
+
+check_overdispersion(no_species_nb_max)
+#no overdispersion in neg binomial model, there is overdispersion in the poisson model
+check_overdispersion(no_species_glmer_max)
+ 
+#compare models: https://stats.stackexchange.com/questions/311556/help-interpreting-count-data-glmm-using-lme4-glmer-and-glmer-nb-negative-binom
+lmtest::lrtest(no_species_glmer_max, no_species_nb_max)
+#this suggests the negative binomial model is a better fit - the log likelihood is lower (remember both numbers are negative) for glmer poisson model (and the two models are significantly different), so that model is poorer fit (see comments here for discussion of interpretation of log likelihood results: https://stats.stackexchange.com/questions/6505/likelihood-ratio-test-in-r/6515#6515)
+```

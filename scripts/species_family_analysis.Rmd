@@ -1,0 +1,284 @@
+---
+title: "Species and family specific analysis"
+author: "Jason Flower"
+date: "25/06/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(knitr)
+library(gt)
+library(ggthemes)
+```
+
+```{r data import and tidying, message=FALSE}
+#full dataset (each fish)
+traps <- read_csv("../data/traps_data.csv", col_types = cols_only(
+  TrapID = col_character(),
+  Surveyors = col_character(),
+  Length_cm = col_double(),
+  LengthType_FL_TL = col_character(),
+  Weight_Grams = col_double(),
+  sciname = col_character(),
+  Date_YMD = col_date(format = ""),
+  Exp_or_Cont = col_character(),
+  design = col_character(),
+  Deep_Shallow = col_character(),
+  days_since_last_haul = col_double(),
+  common = col_character(),
+  family = col_character(),
+  N_coord = col_double(),
+  W_coord = col_double(),
+  location_exposure = col_character(),
+  depth_m = col_double(),
+  zero_or_1_fish = col_double()
+))
+
+#same dataset, zero fish hauls excluded
+traps_no_zeros <- traps %>% 
+  filter(zero_or_1_fish != 0)
+
+#to get only paired trap data, summarise to get mean length for each trap, spread the data, and then use na.omit to drop any traps that don't have a mean length value for both Control and Experimental. Gather the data back together
+traps_paired <- traps %>% 
+  group_by(Date_YMD, TrapID, Exp_or_Cont) %>%
+  summarise(Length_mean = mean(Length_cm)) %>%
+  #filter(Length_mean != 0) %>%
+  mutate(TrapNo = str_extract(TrapID, "\\d+")) %>%
+  ungroup() %>%
+  select(-TrapID) %>% #need to remove this otherwise spread doesn't work as needed
+  spread(Exp_or_Cont, Length_mean) %>%
+  na.omit() %>%
+  gather(key = "Exp_or_Cont", value = "Length_mean", c("Control", "Experimental")) %>%
+  #rebuild TrapID code
+  mutate(TrapID = str_c(str_sub(Exp_or_Cont, 1,1), TrapNo)) %>%
+  select(-TrapNo) %>%
+  distinct(TrapID, Date_YMD) %>%
+  inner_join(traps)
+
+#make a dataset excluding the traps hauls with no fish
+traps_paired_no_zeros <- traps %>% 
+  filter(common != "No fish") %>%
+  group_by(Date_YMD, TrapID, Exp_or_Cont) %>%
+  summarise(Length_mean = mean(Length_cm)) %>%
+  #filter(Length_mean != 0) %>%
+  mutate(TrapNo = str_extract(TrapID, "\\d+")) %>%
+  ungroup() %>%
+  select(-TrapID) %>% #need to remove this otherwise spread doesn't work as needed
+  spread(Exp_or_Cont, Length_mean) %>%
+  na.omit() %>%
+  gather(key = "Exp_or_Cont", value = "Length_mean", c("Control", "Experimental")) %>%
+  #rebuild TrapID code
+  mutate(TrapID = str_c(str_sub(Exp_or_Cont, 1,1), TrapNo)) %>%
+  select(-TrapNo) %>%
+  distinct(TrapID, Date_YMD) %>%
+  inner_join(traps)
+
+#import data summarized at the haul level
+trap_hauls <- read_csv("../data/traps_hauls.csv", col_types = cols_only(
+  TrapID = col_character(),
+  Date_YMD = col_date(format = ""),
+  Exp_or_Cont = col_character(),
+  design = col_character(),
+  days_since_last_haul = col_double(),
+  depth_m = col_double(),
+  N_coord = col_double(),
+  W_coord = col_double(),
+  location_exposure = col_character(),
+  mean_length_cm = col_double(),
+  total_biomass_kg = col_double(),
+  no_fish = col_double(),
+  no_species = col_double()
+))
+
+#summarize data for hauls
+trap_hauls_no_zero <- traps_no_zeros %>% 
+  group_by(TrapID, Date_YMD, Exp_or_Cont) %>% 
+  summarise(mean_length_cm = mean(Length_cm), total_biomass_kg = sum(Weight_Grams)/1000, no_fish = sum(zero_or_1_fish), no_species = n_distinct(sciname), depth_m = mean(depth_m), days_since_last_haul = mean(days_since_last_haul)) %>%
+  mutate(no_species = case_when(no_fish == 0 ~ 0,
+                                TRUE ~ as.numeric(no_species))) %>% 
+  ungroup()
+
+trap_hauls_paired <- traps_paired %>% 
+  group_by(TrapID, Date_YMD, Exp_or_Cont) %>% 
+  summarise(mean_length_cm = mean(Length_cm), total_biomass_kg = sum(Weight_Grams)/1000, no_fish = sum(zero_or_1_fish), no_species = n_distinct(sciname), depth_m = mean(depth_m), days_since_last_haul = mean(days_since_last_haul)) %>%
+  #need this otherwise traps hauls with no fish are counted as having 1 species
+  mutate(no_species = case_when(no_fish == 0 ~ 0,
+                                TRUE ~ as.numeric(no_species))) %>% 
+  ungroup()
+
+trap_hauls_paired_no_zeros <- traps_paired_no_zeros %>% 
+  group_by(TrapID, Date_YMD, Exp_or_Cont) %>% 
+  summarise(mean_length_cm = mean(Length_cm), total_biomass_kg = sum(Weight_Grams)/1000, no_fish = sum(zero_or_1_fish), no_species = n_distinct(sciname), depth_m = mean(depth_m), days_since_last_haul = mean(days_since_last_haul)) %>%
+  #need this otherwise traps hauls with no fish are counted as having 1 species
+  mutate(no_species = case_when(no_fish == 0 ~ 0,
+                                TRUE ~ as.numeric(no_species))) %>% 
+  ungroup()
+```
+
+```{r species counts and missing species}
+#species counts for species absent in experimental or control traps
+
+traps_paired_no_zeros %>% 
+  group_by(Exp_or_Cont) %>% 
+  count(common) %>% 
+  pivot_wider(names_from = Exp_or_Cont, values_from = n, values_fill = list(n=0)) %>% 
+  arrange(desc(Experimental)) %>%
+  mutate(perc_control = sprintf("%.1f", 100*Control/sum(Control)), perc_exp = sprintf("%.1f",100*Experimental/sum(Experimental))) %>% 
+  filter(Control == 0 | Experimental == 0)
+```
+
+```{r proportions of thin and thick bodied fish in each trap type}
+#table of no of fish
+kable(traps_paired_no_zeros %>%
+  group_by(Exp_or_Cont, family) %>%
+  summarise(no_fish = n()) %>%
+  spread(Exp_or_Cont, no_fish) %>%
+  arrange(desc(Control)))
+
+#no of fish in traps, used in proportions test
+cont_fish_total <- nrow(traps_paired_no_zeros %>% filter(Exp_or_Cont == "Control"))
+exp_fish_total <- nrow(traps_paired_no_zeros %>% filter(Exp_or_Cont == "Experimental"))
+trap_totals <- c(cont_fish_total, exp_fish_total)
+
+family_no <- traps_paired_no_zeros %>%
+  group_by(Exp_or_Cont, family) %>%
+  summarise(no_fish = n()) %>%
+  ungroup() %>%
+  group_by(Exp_or_Cont) %>%
+  mutate(prop_fish = 100*no_fish/sum(no_fish)) %>%
+  ungroup() %>%
+  group_by(family) %>%
+  filter(sum(no_fish) >9) %>% #removes families with less than 10 fish; gets rid of fish families only represented in control or experimental traps
+  ungroup() %>%
+  arrange(Exp_or_Cont) 
+#add this back in to get a two column view of the count data
+  # select(-prop_fish) %>%
+  # spread(Exp_or_Cont, no_fish)
+
+#create tibble to store test results and with family names to cycle through in loop
+families_prop_test <- tibble(family = unique(family_no$family), p_value = numeric(1))
+
+#test for significant differece between proportions of fish families caught in control vs experimental traps
+for (i in families_prop_test$family) {
+  family_data <- family_no %>%
+  filter(family == i)
+  
+  results <- prop.test(family_data$no_fish, trap_totals)
+  print(i)
+  print(results)
+  families_prop_test[families_prop_test$family == i, "p_value"] <- results$p.value
+  
+}
+
+#Thin bodied families = Acanthuridae, Balistidae, Bothidae, Chaetodontidae, Monacanthidae, Pomacanthidae
+#Thick bodied families = Carangidae, Diodontidae, Haemulidae, Holocentridae, Labridae, Lutjanidae, Mullidae, Ostraciidae, Scaridae, Scorpaenidae, Serranidae, Sparidae
+#create sort order 
+fish_grouping <- c("Acanthuridae", "Balistidae", "Chaetodontidae", "Monacanthidae", "Pomacanthidae", "Carangidae", "Haemulidae", "Holocentridae", "Labridae", "Lutjanidae", "Mullidae", "Ostraciidae", "Scaridae", "Scorpaenidae", "Serranidae", "Sparidae")
+
+#output fish species and family list so I can check which species I'm classifying as thick and thin bodied
+traps_paired_no_zeros %>% 
+  distinct(family, common) %>% 
+  arrange(family, common)
+
+#traps_paired_no_zeros$family <- as.factor(traps_paired_no_zeros$family)
+
+#get fish no.s grouped by family and trap type, and plot
+traps_paired_no_zeros %>%
+  group_by(Exp_or_Cont, family) %>%
+  summarise(no_fish = n()) %>%
+  ungroup() %>%
+  group_by(Exp_or_Cont) %>%
+  mutate(prop_fish = 100*no_fish/sum(no_fish)) %>%
+  ungroup() %>%
+  group_by(family) %>%
+  filter(sum(no_fish) >9) %>% #removes families with less than 10 fish; gets rid of fish families only represented in control or experimental traps
+  ungroup() %>%
+  arrange(Exp_or_Cont) %>%
+  left_join(families_prop_test) %>%
+  ggplot(aes(x=family, y=prop_fish, fill=Exp_or_Cont)) +
+  geom_col(position = "dodge") +
+  labs(x= "Family", y = "Proportion of fish in trap (%)", fill = NULL) +
+  theme_hc() +
+  theme(axis.text.x = element_text(angle=45, hjust = 0.7), axis.text = element_text(size = 20), axis.title = element_text(size = 26), legend.position = c(0.8, 0.7), legend.text = element_text(size = 20)) +
+  scale_x_discrete(limits = fish_grouping) +
+  geom_text( aes(y=prop_fish+2, label = ifelse(p_value<0.05 & Exp_or_Cont != "Control","*","")), size = 14) +
+  annotate("rect", xmin = 0, xmax = 5.5, ymin = 0, ymax = 40, alpha = .2) +
+  annotate("text", label = "Thin-bodied fish", x = 4, y = 35, alpha = 0.6, size = 8) +
+  annotate("text", label = "Thick-bodied fish", x= 10, y = 35, size = 8)
+
+ggsave("../outputs/figures/proportion_families.png", width = 16, height = 8)
+```
+
+```{r chi-sq test difference in species proportions}
+
+#no of fish in traps, used in proportions test
+cont_fish_total <- nrow(traps_paired_no_zeros %>% filter(Exp_or_Cont == "Control"))
+exp_fish_total <- nrow(traps_paired_no_zeros %>% filter(Exp_or_Cont == "Experimental"))
+trap_totals <- c(cont_fish_total, exp_fish_total)
+
+#species counts in each trap type
+species_no <- traps_paired_no_zeros %>% 
+  group_by(Exp_or_Cont) %>% 
+  count(common) %>% 
+  pivot_wider(names_from = Exp_or_Cont, values_from = n, values_fill = list(n=0)) %>% 
+  pivot_longer(-common, names_to = "Exp_or_Cont", values_to = "n")
+
+#create tibble to store test results and with species names to cycle through in loop
+species_prop_test <- tibble(species = unique(species_no$common), chi_sq = numeric(1), df = numeric(1), p_value = numeric(1))
+
+#test for significant differece between proportions of fish families caught in control vs experimental traps
+for (i in species_prop_test$species) {
+  species_data <- species_no %>%
+  filter(common == i)
+  
+  results <- prop.test(species_data$n, trap_totals, correct = FALSE)
+  if(results$p.value<0.05) {
+    print(i) 
+    print(results) }
+  species_prop_test[species_prop_test$species == i, "p_value"] <- results$p.value
+  species_prop_test[species_prop_test$species == i, "chi_sq"] <- results$statistic
+  species_prop_test[species_prop_test$species == i, "df"] <- results$parameter
+}
+
+species_prop_test_rounded <- species_prop_test %>% 
+  arrange(p_value) %>% 
+  mutate("p-value" = sprintf("%0.3f", p_value), "chi_sq" = sprintf("%0.1f", chi_sq), df = sprintf("%0.0f", df))
+
+species_prop_sig_diff <- species_prop_test_rounded %>% 
+  filter(`p-value` <0.05) %>% 
+  select(-p_value)
+
+traps_paired_no_zeros %>% 
+  group_by(Exp_or_Cont) %>% 
+  count(common) %>% 
+  pivot_wider(names_from = Exp_or_Cont, values_from = n, values_fill = list(n=0)) %>% 
+  mutate(perc_control = sprintf("%.1f", 100*Control/sum(Control)), perc_exp = sprintf("%.1f",100*Experimental/sum(Experimental))) %>% 
+  right_join(., species_prop_sig_diff, by = c("common" = "species")) %>% 
+  arrange(perc_control) %>% 
+  mutate(group = case_when(perc_control <0.85 ~ "More fish in experimental trap",
+                           TRUE ~ "More fish in control trap")) %>% 
+  gt(groupname_col = "group") %>% 
+  cols_label(
+    common = "Species name",
+    #html codes for chi and squared
+    chi_sq = html("&chi;&sup2;")
+  ) %>% 
+  tab_spanner(
+    label = "Control trap",
+    columns = vars(Control, perc_control)
+  ) %>% 
+  tab_spanner(
+    label = "Experimental trap",
+    columns = vars(Experimental, perc_exp)
+  ) %>% 
+  cols_label(
+    Control = "No. of fish",
+    perc_control = "% of total",
+    Experimental = "No. of fish",
+    perc_exp = "% of total"
+  ) %>% 
+  gtsave("sig_diff_species_counts.png", path = "../outputs/")
+```
