@@ -362,3 +362,34 @@ check_overdispersion(no_species_glmer_max)
 lmtest::lrtest(no_species_glmer_max, no_species_nb_max)
 #this suggests the negative binomial model is a better fit - the log likelihood is lower (remember both numbers are negative) for glmer poisson model (and the two models are significantly different), so that model is poorer fit (see comments here for discussion of interpretation of log likelihood results: https://stats.stackexchange.com/questions/6505/likelihood-ratio-test-in-r/6515#6515)
 ```
+
+```{r models with exp/cont x soak time}
+#run all models with experimental/ control*soak time trap interaction term to check if this is singificant (it is not!)
+
+length_model_w_interaction <- lmer(mean_length_cm ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + Exp_or_Cont*log_days_since_last_haul + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", REML = FALSE)
+
+#all_models(dataset = trap_haul_no_zero, full_model = length_model_w_interaction, response_var = "mean_length_cm", response_var_name_plot = "mean fish length (cm)", filename = "mean_length_lmm_w_interaction")
+
+biomass_log_model_w_interaction <- lmer(log_biomass ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + Exp_or_Cont*log_days_since_last_haul + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", REML = FALSE)
+
+#all_models(dataset = trap_haul_no_zero, full_model = biomass_log_model_w_interaction, response_var = "log_biomass", response_var_name_plot = "log+1 fish biomass (kg)", filename = "biomass_lmm_w_interaction")
+
+no_fish_glmer_nb_w_interaction <- glmer.nb(no_fish ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + Exp_or_Cont*log_days_since_last_haul + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=10000)))
+
+#all_models_glmer(dataset = trap_haul_no_zero, full_model = no_fish_glmer_nb_w_interaction, response_var = "no_fish", response_var_name_plot = "number of fish", filename = "no_fish_nb_glmer_w_interaction")
+
+no_species_glmer_nb_w_interaction <- glmer.nb(no_species ~ design + log_days_since_last_haul + location_exposure + Exp_or_Cont + Exp_or_Cont*log_days_since_last_haul + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=10000)))
+
+#all_models_glmer(dataset = trap_haul_no_zero, full_model = no_species_glmer_nb_w_interaction, response_var = "no_species", response_var_name_plot = "number of species", filename = "no_species_nb_glmer_w_interaction")
+
+tab_model(length_model_w_interaction, biomass_log_model_w_interaction, no_fish_glmer_nb_w_interaction, no_species_glmer_nb_w_interaction, 
+         # pred.labels = c( "Intercept", "Design (V)",  "log(Soak time)", "Location (windward)", "Escape gaps (present)"),
+          dv.labels = c("Mean catch length (cm)", "log(total catch biomass (kg))", "Number of fish", "Number of species"),
+          #string.ci = "Conf. int. (95%)",
+          show.stat = TRUE,
+          show.aic = TRUE,
+          show.icc = FALSE,
+          show.re.var = FALSE,
+          p.val = "wald")
+```
+
