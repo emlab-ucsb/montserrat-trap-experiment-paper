@@ -20,6 +20,7 @@ ks_testing_generic <- function(data){
     xlab("Sample") +
     ylab("ECDF") +
     theme_bw() +
+    scale_fill_manual(values = plot_colours) +
     geom_segment(aes(x = x0[1], y = y0[1], xend = x0[1], yend = y1[1]),
                  linetype = "dashed", color = "red") +
     geom_point(aes(x = x0[1] , y= y0[1]), color="red", size=1) +
@@ -30,6 +31,7 @@ ks_testing_generic <- function(data){
   hist_plot <- ggplot(data, aes(x=Length_cm, fill= Exp_or_Cont)) +
     geom_histogram(binwidth = 1) +    
     theme_bw() +
+    scale_fill_manual(values = plot_colours) +
     guides(fill = FALSE) +
     theme(axis.text = element_text(size = 14), axis.title = element_blank(), strip.text.x = element_text(size = 14)) +
     facet_wrap(~Exp_or_Cont, nrow = 2)

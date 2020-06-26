@@ -12,7 +12,6 @@ library(tidyverse)
 library(knitr)
 library(lubridate)
 library(paletteer)
-library(ggthemes)
 ```
 
 ```{r data import and tidying, message=FALSE}
@@ -231,7 +230,7 @@ traps %>%
   scale_x_date(breaks = traps$Date_YMD, date_labels = "%d %b") +
   scale_y_discrete(limits = positions) +
   labs(x = "Date", y = "Trap ID") +
-  theme_hc() +
+  theme_bw() +
   theme(axis.text.x = element_text(angle=45, vjust = 0.5))
 
 ggsave("../outputs/figures/trap_haul_dates.png", width = 16, height = 8)

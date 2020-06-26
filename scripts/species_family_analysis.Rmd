@@ -11,7 +11,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(knitr)
 library(gt)
-library(ggthemes)
+
+plot_colours <- c(Control = "#ca0020", Experimental = "#92c5de")
 ```
 
 ```{r data import and tidying, message=FALSE}
@@ -201,7 +202,8 @@ traps_paired_no_zeros %>%
   ggplot(aes(x=family, y=prop_fish, fill=Exp_or_Cont)) +
   geom_col(position = "dodge") +
   labs(x= "Family", y = "Proportion of fish in trap (%)", fill = NULL) +
-  theme_hc() +
+  theme_bw() +
+  scale_fill_manual(values = plot_colours) +
   theme(axis.text.x = element_text(angle=45, hjust = 0.7), axis.text = element_text(size = 20), axis.title = element_text(size = 26), legend.position = c(0.8, 0.7), legend.text = element_text(size = 20)) +
   scale_x_discrete(limits = fish_grouping) +
   geom_text( aes(y=prop_fish+2, label = ifelse(p_value<0.05 & Exp_or_Cont != "Control","*","")), size = 14) +

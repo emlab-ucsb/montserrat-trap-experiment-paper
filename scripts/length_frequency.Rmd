@@ -11,11 +11,12 @@ knitr::opts_chunk$set(echo = FALSE)
 library(tidyverse)
 library(knitr)
 library(paletteer)
-library(ggthemes)
 library(cowplot)
 
 source("../functions/ks_test_ecdf_generic.R") #for Kolmogorov-Smirnov tests and ECDF plots
 source("../functions/ks_test_ecdf.R") #for species K-S tests
+
+plot_colours <- c(Control = "#ca0020", Experimental = "#92c5de")
 ```
 
 ```{r data import and tidying, message=FALSE}
@@ -132,9 +133,7 @@ traps_paired_no_zeros %>%
     guides(fill = FALSE) +
     theme(axis.text = element_text(size = 20), axis.title = element_blank(), strip.text.x = element_text(size = 20)) +
     facet_wrap(~Exp_or_Cont, nrow = 2) +
-  scale_fill_wsj()
-   #scale_fill_paletteer_d("ggsci::category20_d3")
-    #scale_fill_brewer(type = "div", palette = "Dark2")
+    scale_fill_manual(values = plot_colours)
 
 ggsave("../outputs/figures/length_freq_paired_simple.png", width = 16, height = 8)
 ```
