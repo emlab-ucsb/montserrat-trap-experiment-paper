@@ -12,7 +12,6 @@ knitr::opts_chunk$set(echo = FALSE)
 ```{r libraries, message=FALSE}
 library(tidyverse)
 library(lubridate)
-library(ggthemes)
 library(cowplot)
 library(knitr)
 library(broom.mixed) #this and dotwhisker for coefficient estimate plots
@@ -261,12 +260,16 @@ tab_model(length_parsimonious, biomass_parsimonious, no_fish_parsimonious, no_sp
 
 ```{r partial effects plots}
 
+#potential colours #ca0020 #f4a582 #92c5de #0571b0 see: https://colorbrewer2.org/#type=diverging&scheme=RdBu&n=4
+plot_colours <- c(Leeward = "#f4a582", Windward = "#0571b0")
+
 pe_plot_length <- ggpredict(length_parsimonious, type = "fe", terms = "log_days_since_last_haul [n=30]") %>% 
   mutate(soak_time = exp(x)) %>% 
   ggplot(aes(x = soak_time, y= predicted)) +
   geom_line() +
   geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.3) +
-  labs(x = "Soak time", y = "Mean length (cm)") 
+  labs(x = "Soak time (days)", y = "Mean length (cm)") +
+  theme(axis.text = element_text(size = 16), axis.title = element_text(size = 20), legend.title = element_text(size = 16), legend.text = element_text(size = 16))
 
 
 pe_plot_biomass <- ggpredict(biomass_parsimonious, type = "fe", terms = "log_days_since_last_haul [n=30]") %>% 
@@ -274,13 +277,15 @@ pe_plot_biomass <- ggpredict(biomass_parsimonious, type = "fe", terms = "log_day
   ggplot(aes(x = soak_time, y= predicted_transformed)) +
   geom_line() +
   geom_ribbon(aes(ymin = conf.low_transformed, ymax = conf.high_transformed), alpha = 0.3) +
-  labs(x = "Soak time", y = "Total biomass in catch (kg)")
+  labs(x = "Soak time (days)", y = "Mean total biomass (kg)") +
+  theme(axis.text = element_text(size = 16), axis.title = element_text(size = 20), legend.title = element_text(size = 16), legend.text = element_text(size = 16))
 
 pe_plot_no_fish <- ggpredict(no_fish_parsimonious, type = "fe", terms = "location_exposure") %>% 
 ggplot(aes(x = x, y = predicted)) +
   geom_point() +
   geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2) +
-  labs(x = "Location (exposure)", y = "Number of fish in catch")
+  labs(x = "Location", y = "Number of fish") +
+  theme(axis.text = element_text(size = 16), axis.title = element_text(size = 20), legend.title = element_text(size = 16), legend.text = element_text(size = 16))
 
 pe_plot_no_species <- ggpredict(no_species_parsimonious, type = "fe", terms = c("log_days_since_last_haul [n=30]", "location_exposure")) %>% 
   mutate(soak_time  = exp(x),
@@ -289,7 +294,10 @@ pe_plot_no_species <- ggpredict(no_species_parsimonious, type = "fe", terms = c(
   ggplot(aes(x = soak_time, y = predicted, fill = location_exposure, colour = location_exposure)) +
   geom_line() +
   geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.3) +
-  labs(x = "Soak time", y = "Number of species in catch", fill = "Location (exposure)", colour = "Location (exposure)")
+  scale_colour_manual(values = plot_colours) +
+  scale_fill_manual(values = plot_colours) +
+  labs(x = "Soak time (days)", y = "Number of species", fill = "Location", colour = "Location") +
+  theme(axis.text = element_text(size = 16), axis.title = element_text(size = 20), legend.title = element_text(size = 16), legend.text = element_text(size = 16))
 
 cowplot::plot_grid(pe_plot_length, pe_plot_biomass, pe_plot_no_fish, pe_plot_no_species, labels = "auto")
 ggsave("../outputs/figures/partial_effects.png", width = 16, height = 8)

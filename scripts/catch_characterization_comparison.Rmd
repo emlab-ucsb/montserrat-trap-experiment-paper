@@ -231,7 +231,7 @@ traps %>%
   scale_y_discrete(limits = positions) +
   labs(x = "Date", y = "Trap ID") +
   theme_bw() +
-  theme(axis.text.x = element_text(angle=45, vjust = 0.5))
+  theme(axis.text.x = element_text(angle=45, vjust = 0.5), axis.text = element_text(size = 16), axis.title = element_text(size = 20))
 
 ggsave("../outputs/figures/trap_haul_dates.png", width = 16, height = 8)
 ```

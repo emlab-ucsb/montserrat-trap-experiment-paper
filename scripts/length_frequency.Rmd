@@ -124,11 +124,17 @@ trap_hauls_paired_no_zeros <- traps_paired_no_zeros %>%
 ```
 
 ## Length-frequency histogram, paired trap hauls excluding zeros
-```{r length-frequency histogram and Kolmogorov-Smirnov test}
+```{r length-frequency histogram}
+
+summary_stats <- traps_paired_no_zeros %>% 
+  group_by(Exp_or_Cont) %>% 
+  summarise(mean_length = mean(Length_cm))
+
 traps_paired_no_zeros %>% 
   filter(Length_cm<50) %>% 
   ggplot(aes(x=Length_cm, fill= Exp_or_Cont)) +
     geom_histogram(binwidth = 1) +    
+    geom_vline(data = summary_stats, aes(xintercept = mean_length), colour = "black", linetype = "dashed", show.legend = FALSE) +
     theme_bw() +
     guides(fill = FALSE) +
     theme(axis.text = element_text(size = 20), axis.title = element_blank(), strip.text.x = element_text(size = 20)) +
@@ -154,6 +160,7 @@ control_hist_species_perc <- traps_paired_no_zeros %>%
   geom_histogram(data = filter(species_fct, Exp_or_Cont == "Control"), aes(x=Length_cm, fill = species_lumped), breaks = seq(9,50,1)) +
   scale_fill_paletteer_d("ggsci::category20_d3") +
   theme_bw() +
+  theme(axis.text = element_text(size = 16), axis.title = element_text(size = 20), legend.title = element_text(size = 16), legend.text = element_text(size = 16)) +
   labs(x = NULL, y = "Number of fish", fill = "Species") 
 
 #experimental traps histogram
@@ -165,6 +172,7 @@ exp_hist_species_perc <- traps_paired_no_zeros %>%
   geom_histogram(data = filter(species_fct, Exp_or_Cont == "Experimental"), aes(x=Length_cm, fill = species_lumped), breaks = seq(9,50,1)) +
   scale_fill_paletteer_d("ggsci::category20_d3") +
   theme_bw() +
+  theme(axis.text = element_text(size = 16), axis.title = element_text(size = 20), legend.title = element_text(size = 16), legend.text = element_text(size = 16)) +
   labs(x = "Length (cm)", y = "Number of fish", fill = "Species")
 
 # extract the legend from one of the plots and create some space to the left of the legend
@@ -175,7 +183,7 @@ species_hist_plots <- plot_grid(control_hist_species_perc + theme(legend.positio
           nrow = 2,
           labels = c("(a)", "(b)"))
 
-plot_grid(species_hist_plots, legend, rel_widths = c(2, .3))
+plot_grid(species_hist_plots, legend, rel_widths = c(2, .37))
 
 ggsave("../outputs/figures/length_freq_species_perc.png", width = 16, height = 10)
 ```
@@ -250,7 +258,7 @@ iwalk(ecdf_hist_plots, ~{
 
 ## Length-frequency plots for short, medium and long soak times
 ```{r l-f soak time}
-soak_time_lengt_freq_allplots <- traps_paired_no_zeros %>% 
+soak_time_lengt_freq_allplots <- traps_no_zeros %>% 
   filter(Length_cm < 50) %>% 
   mutate(soak_time_fct = case_when(days_since_last_haul<8 ~ "short",
                                    days_since_last_haul>8 & days_since_last_haul<15 ~ "medium",
@@ -263,7 +271,9 @@ soak_time_lengt_freq_allplots <- traps_paired_no_zeros %>%
   geom_histogram(breaks = seq(9,50,1)) +
   scale_fill_paletteer_d("ggsci::category20_d3") +
   #discrete_scale("fill", "manual", colorRampPalette(brewer.pal(9, "Set1")),  guide = guide_legend(ncol = 1, title.position = "top")) +
-  labs(x = "Length (cm)", y = "Number of fish")) 
+  labs(x = "Length (cm)", y = "Number of fish") +
+  theme_bw() +
+  theme(axis.text = element_text(size = 16), axis.title = element_text(size = 20), legend.title = element_text(size = 16), legend.text = element_text(size = 16)))
 
 #for combined legend with 3 plots (from: https://wilkelab.org/cowplot/articles/shared_legends.html)
 #note I need to definte the package cowplot:: because sjplot also has plot_grid but must work slightly differently
@@ -281,15 +291,13 @@ combined_plot <- cowplot::plot_grid(soak_time_lengt_freq_allplots[[1]] + theme(l
                    scale = 0.92,
                    labels = "auto")  
 
-cowplot::plot_grid(combined_plot, legend, rel_widths = c(1,0.1)) +
-  draw_label("Number of fish", x= 0, y=0.5, vjust= 1.5, angle=90)
+cowplot::plot_grid(combined_plot, legend, rel_widths = c(1,0.17)) +
+  draw_label("Number of fish", x= 0, y=0.5, vjust= 1.5, angle=90, size = 20)
 
 ggsave("../outputs/figures/soak_time_length_freq_species.png", width = 16, height = 12)
 
 #get number of trap hauls in each soak time grouping
-traps_paired_no_zeros %>% 
-  filter(Length_cm>0) %>% 
-  filter(Length_cm < 50) %>% 
+traps_no_zeros %>% 
   mutate(soak_time_fct = case_when(days_since_last_haul<8 ~ "short",
                                    days_since_last_haul>8 & days_since_last_haul<15 ~ "medium",
                                    days_since_last_haul >15 ~ "long")) %>% 
@@ -298,5 +306,28 @@ traps_paired_no_zeros %>%
   count(soak_time_fct) %>% 
   group_by(soak_time_fct) %>% 
   tally()
+
+#mean fish length for long, medium and short soak times
+traps_no_zeros %>% 
+  mutate(soak_time_fct = case_when(days_since_last_haul<8 ~ "short",
+                                   days_since_last_haul>8 & days_since_last_haul<15 ~ "medium",
+                                   days_since_last_haul >15 ~ "long")) %>% 
+  mutate(soak_time_fct = as.factor(soak_time_fct)) %>% 
+  group_by(soak_time_fct) %>% 
+  summarise(mean_length = mean(Length_cm))
+
+#change in % of species total with incresing soak time - table
+
+traps_no_zeros %>% 
+  filter(Length_cm < 50) %>% 
+  mutate(soak_time_fct = case_when(days_since_last_haul<8 ~ "short",
+                                   days_since_last_haul>8 & days_since_last_haul<15 ~ "medium",
+                                   days_since_last_haul >15 ~ "long")) %>%
+  mutate(soak_time_fct = as.factor(soak_time_fct),
+         soak_time_fct = fct_relevel(soak_time_fct, c("short", "medium", "long"))) %>% 
+  count(soak_time_fct, common) %>% 
+  pivot_wider(names_from = soak_time_fct, values_from = n, values_fill = list(n=0)) %>% 
+  mutate(prop_fish_short = 100*short/sum(short), prop_fish_medium = 100*medium/sum(medium), prop_fish_long = 100*long/sum(long)) %>% 
+  arrange(desc(prop_fish_short))
 ```
 
