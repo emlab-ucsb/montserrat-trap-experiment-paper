@@ -269,7 +269,7 @@ pe_plot_length <- ggpredict(length_parsimonious, type = "fe", terms = "log_days_
   geom_line() +
   geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.3) +
   labs(x = "Soak time (days)", y = "Mean length (cm)") +
-  theme(axis.text = element_text(size = 16), axis.title = element_text(size = 20), legend.title = element_text(size = 16), legend.text = element_text(size = 16))
+  theme(axis.text = element_text(size = 10), axis.title = element_text(size = 12), legend.title = element_text(size = 10), legend.text = element_text(size = 10))
 
 
 pe_plot_biomass <- ggpredict(biomass_parsimonious, type = "fe", terms = "log_days_since_last_haul [n=30]") %>% 
@@ -278,14 +278,14 @@ pe_plot_biomass <- ggpredict(biomass_parsimonious, type = "fe", terms = "log_day
   geom_line() +
   geom_ribbon(aes(ymin = conf.low_transformed, ymax = conf.high_transformed), alpha = 0.3) +
   labs(x = "Soak time (days)", y = "Mean total biomass (kg)") +
-  theme(axis.text = element_text(size = 16), axis.title = element_text(size = 20), legend.title = element_text(size = 16), legend.text = element_text(size = 16))
+ theme(axis.text = element_text(size = 10), axis.title = element_text(size = 12), legend.title = element_text(size = 10), legend.text = element_text(size = 10))
 
 pe_plot_no_fish <- ggpredict(no_fish_parsimonious, type = "fe", terms = "location_exposure") %>% 
 ggplot(aes(x = x, y = predicted)) +
   geom_point() +
   geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2) +
   labs(x = "Location", y = "Number of fish") +
-  theme(axis.text = element_text(size = 16), axis.title = element_text(size = 20), legend.title = element_text(size = 16), legend.text = element_text(size = 16))
+ theme(axis.text = element_text(size = 10), axis.title = element_text(size = 12), legend.title = element_text(size = 10), legend.text = element_text(size = 10))
 
 pe_plot_no_species <- ggpredict(no_species_parsimonious, type = "fe", terms = c("log_days_since_last_haul [n=30]", "location_exposure")) %>% 
   mutate(soak_time  = exp(x),
@@ -297,10 +297,12 @@ pe_plot_no_species <- ggpredict(no_species_parsimonious, type = "fe", terms = c(
   scale_colour_manual(values = plot_colours) +
   scale_fill_manual(values = plot_colours) +
   labs(x = "Soak time (days)", y = "Number of species", fill = "Location", colour = "Location") +
-  theme(axis.text = element_text(size = 16), axis.title = element_text(size = 20), legend.title = element_text(size = 16), legend.text = element_text(size = 16))
+  theme(axis.text = element_text(size = 10), axis.title = element_text(size = 12), legend.title = element_text(size = 10), legend.text = element_text(size = 10))
 
 cowplot::plot_grid(pe_plot_length, pe_plot_biomass, pe_plot_no_fish, pe_plot_no_species, labels = "auto")
 ggsave("../outputs/figures/partial_effects.png", width = 16, height = 8)
+
+ggsave("../outputs/figures/Fig 5.tiff", dpi = 300, width = 19, height = 15, units = "cm", compression = "lzw")
 
 #for prediction plots with data points plotted; can drop outliers by setting scale, but then difficult to see the effect they are having:
 pe_plot_length_withdata <- pe_plot_length +

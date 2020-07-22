@@ -60,10 +60,11 @@ ks_testing <- function(data){
      scale_fill_manual(values = plot_colours) +
      labs(x = "Length of fish (cm)", y="Number of fish") +
      guides(fill = FALSE) +
-     theme(axis.text = element_text(size = 16), axis.title = element_text(size = 16), strip.text.x = element_text(size = 16)) +
+     theme(axis.text = element_text(size = 10), axis.title = element_text(size = 10), strip.text.x = element_text(size = 10)) +
      facet_wrap(~Exp_or_Cont, nrow = 2)
 
    ggsave(paste0("../outputs/figures/species_ecdf_hist/p_less_than_0.05_histograms/", unique(data$common), ".png"), width = 16, height = 8)
+   ggsave(paste0("../outputs/figures/species_ecdf_hist/p_less_than_0.05_histograms/", unique(data$common), ".tiff"), dpi = 300, width = 19, height = 12, units = "cm", compression = "lzw")
  }
  
 return(plot_grid(ecdf_plot, hist_plot, nrow = 2))

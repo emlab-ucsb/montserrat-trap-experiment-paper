@@ -204,14 +204,16 @@ traps_paired_no_zeros %>%
   labs(x= "Family", y = "Proportion of fish in trap (%)", fill = NULL) +
   theme_bw() +
   scale_fill_manual(values = plot_colours) +
-  theme(axis.text.x = element_text(angle=45, hjust = 0.7), axis.text = element_text(size = 20), axis.title = element_text(size = 26), legend.position = c(0.8, 0.7), legend.text = element_text(size = 20)) +
+  theme(axis.text.x = element_text(angle=45, hjust = 0.7), axis.text = element_text(size = 10), axis.title = element_text(size = 12), legend.position = c(0.8, 0.7), legend.text = element_text(size = 12)) +
   scale_x_discrete(limits = fish_grouping) +
-  geom_text( aes(y=prop_fish+2, label = ifelse(p_value<0.05 & Exp_or_Cont != "Control","*","")), size = 14) +
+  geom_text( aes(y=prop_fish+2, label = ifelse(p_value<0.05 & Exp_or_Cont != "Control","*","")), size = 10) +
   annotate("rect", xmin = 0, xmax = 5.5, ymin = 0, ymax = 40, alpha = .2) +
-  annotate("text", label = "Thin-bodied fish", x = 4, y = 35, alpha = 0.6, size = 8) +
-  annotate("text", label = "Thick-bodied fish", x= 10, y = 35, size = 8)
+  annotate("text", label = "Thin-bodied fish", x = 3, y = 37, alpha = 0.6, size = 6) +
+  annotate("text", label = "Thick-bodied fish", x= 10, y = 37, size = 6)
 
 ggsave("../outputs/figures/proportion_families.png", width = 16, height = 8)
+
+ggsave("../outputs/figures/Fig 6.tiff", dpi = 300, width = 19, height = 12, units = "cm", compression = "lzw")
 ```
 
 ```{r chi-sq test difference in species proportions}
