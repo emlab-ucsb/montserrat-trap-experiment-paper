@@ -284,5 +284,7 @@ traps_paired_no_zeros %>%
     Experimental = "No. of fish",
     perc_exp = "% of total"
   ) %>% 
-  gtsave("sig_diff_species_counts.png", path = "../outputs/")
+  #gtsave("sig_diff_species_counts.png", path = "../outputs/") %>% 
+  gtsave("S6 Table.rtf", path = "../outputs/")
+  
 ```

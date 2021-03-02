@@ -272,3 +272,10 @@ kable(traps %>%
   col.names = c("Common name", "Family", "Total number of fish", "Proportion of total as %"),
   caption = "Proportion of each fish species in catch (all catch combined)")
 ```
+
+## Extra information required for revisions
+```{r}
+range(traps$depth_m, na.rm = TRUE)
+
+```
+
