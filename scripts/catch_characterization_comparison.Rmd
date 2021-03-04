@@ -12,6 +12,8 @@ library(tidyverse)
 library(knitr)
 library(lubridate)
 library(paletteer)
+library(ggtext)
+library(glue)
 ```
 
 ```{r data import and tidying, message=FALSE}
@@ -241,35 +243,37 @@ ggsave("../outputs/figures/S1 Fig.tiff", dpi = 300, width = 19, height = 15, uni
 ```{r species composition plot}
 traps %>%
   filter(!is.na(family)) %>%
-  group_by(common, family) %>%
+  group_by(common, sciname, family) %>%
   summarise(no_fish = n()) %>%
   ungroup() %>%
   mutate(prop_fish = 100*no_fish/sum(no_fish)) %>%
   filter(prop_fish>1) %>%
+  mutate(name_sciname = glue::glue("{common} (<i>{sciname}</i>)"),
+         name_sciname = fct_reorder(name_sciname, prop_fish)) %>% 
   #filter(min_rank(desc(prop_fish))<11) %>% #filter for top 10 species
-  ggplot(aes(x= reorder(common,prop_fish), y = prop_fish, fill = family)) +
+  ggplot(aes(x= name_sciname, y = prop_fish, fill = family)) +
   geom_bar(stat = "identity", width = 0.8) +
   theme_bw() +
-  theme(legend.position = c(0.8, 0.5), legend.title = element_text(size = 10), axis.text = element_text(size = 10), axis.title = element_text(size = 12), legend.text = element_text(size = 10)) +
+  theme(legend.position = c(0.8, 0.45), legend.title = element_text(size = 10), axis.text.x = element_text(size = 10), axis.text.y = ggtext::element_markdown(size = 10), axis.title = element_text(size = 12), legend.text = element_text(size = 10)) +
   guides(fill = guide_legend(title = "Family")) +
   labs(x = "Species name", y = "% of total catch") + 
   scale_fill_paletteer_d("ggsci::category20_d3") +
   coord_flip()
 
 ggsave("../outputs/figures/species_perc.png", width = 16, height = 8)
-ggsave("../outputs/figures/Fig 3.tiff", dpi = 300, width = 19, height = 15, units = "cm", compression = "lzw")
+ggsave("../outputs/figures/Fig 3.tiff", dpi = 300, width = 23, height = 13, units = "cm", compression = "lzw")
 ```
 
 ## Proportion of each species in traps
 ```{r proportion of species in traps}
 kable(traps %>%
   filter(!is.na(family)) %>%
-  group_by(common, family) %>%
+  group_by(common, sciname, family) %>%
   summarise(no_fish = n()) %>%
   ungroup() %>%
   mutate(prop_fish = 100*no_fish/sum(no_fish)) %>%
   arrange(desc(prop_fish)),
-  col.names = c("Common name", "Family", "Total number of fish", "Proportion of total as %"),
+  col.names = c("Common name", "Scientific name", "Family", "Total number of fish", "Proportion of total as %"),
   caption = "Proportion of each fish species in catch (all catch combined)")
 ```
 
