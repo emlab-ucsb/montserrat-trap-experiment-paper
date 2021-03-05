@@ -11,6 +11,7 @@ knitr::opts_chunk$set(echo = FALSE)
 library(tidyverse)
 library(knitr)
 library(gt)
+library(rfishbase)
 
 plot_colours <- c(Control = "#ca0020", Experimental = "#92c5de")
 ```
@@ -162,7 +163,7 @@ family_no <- traps_paired_no_zeros %>%
 #create tibble to store test results and with family names to cycle through in loop
 families_prop_test <- tibble(family = unique(family_no$family), p_value = numeric(1))
 
-#test for significant differece between proportions of fish families caught in control vs experimental traps
+#test for significant difference between proportions of fish families caught in control vs experimental traps
 for (i in families_prop_test$family) {
   family_data <- family_no %>%
   filter(family == i)
@@ -179,10 +180,13 @@ for (i in families_prop_test$family) {
 #create sort order 
 fish_grouping <- c("Acanthuridae", "Balistidae", "Chaetodontidae", "Monacanthidae", "Pomacanthidae", "Carangidae", "Haemulidae", "Holocentridae", "Labridae", "Lutjanidae", "Mullidae", "Ostraciidae", "Scaridae", "Scorpaenidae", "Serranidae", "Sparidae")
 
-#output fish species and family list so I can check which species I'm classifying as thick and thin bodied
+#output fish species and family list with their thick or thin bodied classification
 traps_paired_no_zeros %>% 
   distinct(family, common) %>% 
-  arrange(family, common)
+  mutate(thick_thin = case_when(family %in% c("Acanthuridae", "Balistidae", "Chaetodontidae", "Monacanthidae", "Pomacanthidae") ~ "thin",
+                                TRUE ~ "thick")) %>% 
+  arrange(thick_thin, family, common) %>% 
+  write_csv("../outputs/thick_thin_species_list.csv")
 
 #traps_paired_no_zeros$family <- as.factor(traps_paired_no_zeros$family)
 
@@ -215,6 +219,7 @@ ggsave("../outputs/figures/proportion_families.png", width = 16, height = 8)
 
 ggsave("../outputs/figures/Fig 6.tiff", dpi = 300, width = 19, height = 12, units = "cm", compression = "lzw")
 ```
+
 
 ```{r chi-sq test difference in species proportions}
 

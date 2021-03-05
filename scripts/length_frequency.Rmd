@@ -15,6 +15,7 @@ library(cowplot)
 
 source("../functions/ks_test_ecdf_generic.R") #for Kolmogorov-Smirnov tests and ECDF plots
 source("../functions/ks_test_ecdf.R") #for species K-S tests
+source("../functions/hist_plot_func_lmat.R") #for length-frequency plots with lines for length at maturity and mean length
 
 plot_colours <- c(Control = "#ca0020", Experimental = "#92c5de")
 ```
@@ -336,3 +337,66 @@ traps_no_zeros %>%
   arrange(desc(prop_fish_short))
 ```
 
+## Length-frequency plots for species with more than 10 individuals in control and experimental plots
+
+```{r length frequency with Lmat}
+scinames_more_than_10_both_traps<- traps_paired_no_zeros %>% 
+  filter(common %in% species_more_than_10_both_traps) %>% 
+  distinct(sciname, common) %>% 
+  pull(sciname)
+  
+#pull Lmat values from fishbase
+lmat_fishbase <- rfishbase::maturity(scinames_more_than_10_both_traps, fields = c("Species", "Lm"))
+
+#filter out NAs and use mean for cases where there are multiple Lmat values
+lmat_fishbase <- lmat_fishbase %>% 
+  filter(!is.na(Lm)) %>% 
+  group_by(Species) %>% 
+  summarise(Lmat = mean(Lm))
+
+lmat_plot <- traps_paired_no_zeros %>% 
+  inner_join(., lmat_fishbase, by = c("sciname" = "Species")) %>% 
+  #this splits the data into multiple dataframes corresponding to each species
+  split(.$common) %>% 
+  map(~hist_plot_func_lmat(data = ., x = 'Length_cm', group = 'Exp_or_Cont', bin_widths=1))
+
+pdf("../outputs/figures/Lmat-plots/lmat_plots.pdf")
+lmat_plot
+dev.off()
+
+range(lmat_fishbase$Lmat)
+#gridExtra::grid.arrange(grobs = lmat_plot, ncol = 2)
+
+```
+
+```{r eval=FALSE}
+
+# CODE BELOW FROM OLD REPO
+
+#output length-frequency data for Whitespotted fielfish and Honeycomb cowfish to use in Fishbase length-frequency wizard
+traps %>%
+  group_by(common) %>% 
+  filter(common =="Whitespotted filefish" | common == "Honeycomb cowfish") %>% 
+  group_by(common,sciname, Length_cm) %>% 
+  summarise(n = n()) %>% 
+  arrange(common, Length_cm) %>% 
+  ungroup() %>% 
+  select(Length_cm, n) %>% 
+  write_csv("../outputs/wspt_filefish_honey_cowfish_length_data.csv")
+
+#Length at maturity values for Blue Tang, Doctorfish and Red hind are from Montserrat Fisheries Assessment - SFG 2016. Values for Whitespotted filefish and Honeycomb cowfish are from Fishbase length-frequency wizard. French grunt, Schoolmaster, and Lane snapper are from Ault et al. 2008
+
+lmat_values <- tibble(common = c("Blue tang", "Doctorfish", "Red hind", "Whitespotted filefish", "Honeycomb cowfish", "Squirrelfish", "French grunt", "Schoolmaster", "Lane snapper", "Yellow goatfish"),
+                      Lmat = c(15.96, 24.18, 35.22, 21.7, 21.7, NA, 17.7, 14.5, 20.6, NA))
+
+lmat_plot <- traps %>% 
+  filter(common %in% top_10_species) %>%
+  left_join(., lmat_values, by = "common") %>% 
+  #this splits the data into multiple dataframes corresponding to each species
+  split(.$common) %>% 
+  map(~hist_plot_func_lmat(data = ., x = 'Length_cm', group = 'Exp_or_Cont', bin_widths=1))
+
+pdf("../outputs/figs_paper/lmat_plots.pdf")
+lmat_plot
+dev.off()
+```
