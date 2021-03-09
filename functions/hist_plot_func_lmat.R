@@ -1,14 +1,18 @@
 #standardised function for frequency plots
-hist_plot_func_lmat <- function(data, x, group, bin_widths){
+hist_plot_func_lmat <- function(data, x, group, bin_widths, Lmat){
   
   summary_stats <- data %>%
     group_by(!!ensym(group)) %>%
     summarise("Common name" = unique(common), mean = mean(!!ensym(x)), stdDev = sd(!!ensym(x)), n = n())
   print(summary_stats)
   
+  length_maturity <- data %>% 
+    distinct(!!ensym(Lmat)) %>% 
+    pull()
+  
   ggplot(data, aes(x= !!ensym(x), fill = !!ensym(group))) +
     geom_histogram(binwidth = bin_widths) +
-    geom_vline(data = data, aes(xintercept = Lmat), linetype = "solid", show.legend = FALSE ) +
+    geom_vline(aes(xintercept = length_maturity), linetype = "solid", show.legend = FALSE ) +
     geom_vline(data = summary_stats, aes(xintercept = mean), colour = "black", linetype = "dashed", show.legend = FALSE) +
     theme_bw() +
     guides(fill = FALSE) +

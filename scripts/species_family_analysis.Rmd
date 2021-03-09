@@ -132,6 +132,14 @@ traps_paired_no_zeros %>%
   filter(Control == 0 | Experimental == 0)
 ```
 
+```{r output species list}
+traps_paired_no_zeros %>% 
+  distinct(sciname, common, family) %>% 
+  arrange(family, sciname, common) %>% 
+  relocate(family) %>% 
+  write_csv("../outputs/species_list.csv")
+```
+
 ```{r proportions of thin and thick bodied fish in each trap type}
 #table of no of fish
 kable(traps_paired_no_zeros %>%
@@ -293,3 +301,105 @@ traps_paired_no_zeros %>%
   gtsave("S6 Table.rtf", path = "../outputs/")
   
 ```
+
+```{r proportions of fish in each trap type by body shape}
+#classification of body shape using description from https://biogeodb.stri.si.edu/caribbean/en/pages
+#D R Robertson and J Van Tassell. 2019. Shorefishes of the Greater Caribbean: online information system. Version 2.0 Smithsonian Tropical Research Institute, Balboa, Panamá.
+
+#import description data
+species_descrip <- read_csv("../data/species_list_shorefishes_id.csv")
+
+#see what body width descriptions there are
+species_descrip %>% distinct(`Compressed? (from description)`) %>% 
+  arrange(`Compressed? (from description)`)
+
+#classify body width compression as "very compressed", "compressed", "moderately compressed", "not compressed"
+species_descrip <- species_descrip %>% 
+  mutate(body_compression = case_when(str_detect(`Compressed? (from description)`, "very compressed|strongly compressed") ~ "very_compressed",
+                                      str_detect(`Compressed? (from description)`, "moderately compressed|somewhat compressed") ~ "moderately_compressed",
+                                      str_detect(`Compressed? (from description)`, "thick|robust") ~ "not_compressed",
+                                      is.na(`Compressed? (from description)`) ~ "NA",
+                                      TRUE ~ as.character("compressed"))) %>% 
+  #drop fields ready for joining
+  select(-family, -common, -`Description from https://biogeodb.stri.si.edu/caribbean/en/pages`, -`Compressed? (from description)`)
+
+#attach body compression info to the traps data and remove any that did not have body compression info
+traps_w_compression <- traps_paired_no_zeros %>%
+  left_join(., species_descrip, by = c("sciname" = "sciname")) %>% 
+  filter(!body_compression == "NA") %>% 
+  mutate(body_compression = as_factor(body_compression),
+         body_compression = fct_relevel(body_compression,"very_compressed", "compressed", "moderately_compressed", "not_compressed"))
+  
+
+#table of no of fish
+kable(traps_w_compression %>%
+  group_by(Exp_or_Cont, body_compression) %>%
+  summarise(no_fish = n()) %>%
+  spread(Exp_or_Cont, no_fish) %>%
+  arrange(desc(Control)))
+
+#no of fish in traps, used in proportions test
+cont_fish_total_compress <- nrow(traps_w_compression %>% filter(Exp_or_Cont == "Control"))
+exp_fish_total_compress <- nrow(traps_w_compression %>% filter(Exp_or_Cont == "Experimental"))
+trap_totals_compress <- c(cont_fish_total_compress, exp_fish_total_compress)
+
+body_compress_no <- traps_w_compression %>%
+  group_by(Exp_or_Cont, body_compression) %>%
+  summarise(no_fish = n()) %>%
+  ungroup() %>%
+  group_by(Exp_or_Cont) %>%
+  mutate(prop_fish = 100*no_fish/sum(no_fish)) %>%
+  ungroup() %>%
+  arrange(body_compression, Exp_or_Cont) 
+
+#create tibble to store test results and with family names to cycle through in loop
+body_compress_prop_test <- tibble(body_compression = unique(body_compress_no$body_compression), p_value = numeric(1))
+
+#test for significant difference between proportions of fish families caught in control vs experimental traps
+for (i in body_compress_prop_test$body_compression) {
+  body_compress_data <- body_compress_no %>%
+  filter(body_compression == i)
+  
+  results <- prop.test(body_compress_data$no_fish, trap_totals_compress)
+  print(i)
+  print(results)
+  body_compress_prop_test[body_compress_prop_test$body_compression == i, "p_value"] <- results$p.value
+  
+}
+
+
+#output fish species and family list with their thick or thin bodied classification
+traps_w_compression %>% 
+  distinct(family, common, body_compression) %>% 
+  arrange(family, common) %>% 
+  write_csv("../outputs/body_compression_species_list.csv")
+
+#traps_paired_no_zeros$family <- as.factor(traps_paired_no_zeros$family)
+
+#get fish no.s grouped by family and trap type, and plot
+traps_w_compression %>%
+  group_by(Exp_or_Cont, body_compression) %>%
+  summarise(no_fish = n()) %>%
+  ungroup() %>%
+  group_by(Exp_or_Cont) %>%
+  mutate(prop_fish = 100*no_fish/sum(no_fish)) %>%
+  ungroup() %>%
+  arrange(Exp_or_Cont) %>%
+  left_join(body_compress_prop_test) %>%
+  ggplot(aes(x=body_compression, y=prop_fish, fill=Exp_or_Cont)) +
+  geom_col(position = "dodge") +
+  labs(x= "Body compression", y = "Proportion of fish in trap (%)", fill = NULL) +
+  theme_bw() +
+  scale_fill_manual(values = plot_colours) +
+  theme(axis.text.x = element_text(angle=45, hjust = 0.7), axis.text = element_text(size = 10), axis.title = element_text(size = 12), legend.position = c(0.8, 0.7), legend.text = element_text(size = 12)) +
+  scale_x_discrete(labels = c("very_compressed" = "Very compressed", "compressed" = "Compressed", "moderately_compressed" = "Moderately compressed", "not_compressed" = "Not compressed")) +
+  geom_text( aes(y=prop_fish+2, label = ifelse(p_value<0.05 & Exp_or_Cont != "Control","*","")), size = 10) +
+  geom_segment(aes(x = "compressed", y = 45, xend = "moderately_compressed", yend = 45), size = 1, 
+               arrow = arrow(length = unit(.4,"cm"))) +
+  geom_text(aes(x = "moderately_compressed", y = 45, label = "Wider bodied fish"), hjust = -0.1, size = 6)
+
+ggsave("../outputs/figures/proportion_body_compression.png", width = 16, height = 8)
+
+ggsave("../outputs/figures/proportion_body_compression_paper.tiff", dpi = 300, width = 19, height = 12, units = "cm", compression = "lzw")
+```
+
