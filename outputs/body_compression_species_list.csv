@@ -1,51 +1,56 @@
-common,family,body_compression
-Blue tang,Acanthuridae,very_compressed
-Doctorfish,Acanthuridae,very_compressed
-Black durgon,Balistidae,compressed
-Ocean triggerfish,Balistidae,compressed
-Queen triggerfish,Balistidae,compressed
-Almaco jack,Carangidae,compressed
-Greater amberjack,Carangidae,compressed
-Horse-Eye jack,Carangidae,moderately_compressed
-Yellow jack,Carangidae,moderately_compressed
-Banded butterflyfish,Chaetodontidae,very_compressed
-Spotfin butterflyfish,Chaetodontidae,very_compressed
-Balloonfish,Diodontidae,not_compressed
-Porcupinefish,Diodontidae,not_compressed
-Black margate,Haemulidae,compressed
-Bluestriped grunt,Haemulidae,compressed
-Caesar grunt,Haemulidae,compressed
-French grunt,Haemulidae,compressed
-Margate,Haemulidae,compressed
-Longspine squirrelfish,Holocentridae,compressed
-Squirrelfish,Holocentridae,compressed
-Bermuda chub,Kyphosidae,compressed
-Puddingwife,Labridae,compressed
-Spanish hogfish,Labridae,compressed
-Blackfin snapper,Lutjanidae,compressed
-Dog snapper,Lutjanidae,compressed
-Gray snapper,Lutjanidae,compressed
-Lane snapper,Lutjanidae,compressed
-Mahogany snapper,Lutjanidae,compressed
-Mutton snapper,Lutjanidae,compressed
-Schoolmaster,Lutjanidae,compressed
-Scrawled filefish,Monacanthidae,very_compressed
-Unicorn filefish,Monacanthidae,very_compressed
-Whitespotted filefish,Monacanthidae,compressed
-Green moray,Muraenidae,compressed
-Honeycomb cowfish,Ostraciidae,not_compressed
-Smooth trunkfish,Ostraciidae,not_compressed
-Spotted trunkfish,Ostraciidae,not_compressed
-French angelfish,Pomacanthidae,compressed
-Gray angelfish,Pomacanthidae,compressed
-Queen angelfish,Pomacanthidae,very_compressed
-Rock beauty,Pomacanthidae,very_compressed
-Princess parrotfish,Scaridae,moderately_compressed
-Queen parrotfish,Scaridae,moderately_compressed
-Stoplight parrotfish,Scaridae,moderately_compressed
-Red lionfish,Scorpaenidae,moderately_compressed
-Coney,Serranidae,not_compressed
-Nassau grouper,Serranidae,compressed
-Red hind,Serranidae,compressed
-Jolthead porgy,Sparidae,compressed
-Pluma porgy,Sparidae,compressed
+family,sciname,common,Compressed? (from description),body_compression
+Acanthuridae,Acanthurus chirurgus,Doctorfish,strongly compressed oval,very_compressed
+Acanthuridae,Acanthurus coeruleus,Blue tang,strongly compressed oval,very_compressed
+Balistidae,Balistes vetula,Queen triggerfish,compressed,compressed
+Balistidae,Canthidermis sufflamen,Ocean triggerfish,compressed,compressed
+Balistidae,Melichthys niger,Black durgon,compressed,compressed
+Bothidae,Bothus lunatus,Peacock flounder,NA,"NA"
+Carangidae,Carangoides bartholomaei,Yellow jack,moderately compressed in adults,moderately_compressed
+Carangidae,Caranx latus,Horse-Eye jack,moderately compressed in adults,moderately_compressed
+Carangidae,Seriola dumerili,Greater amberjack,compressed,compressed
+Carangidae,Seriola rivoliana,Almaco jack,compressed,compressed
+Chaetodontidae,Chaetodon ocellatus,Spotfin butterflyfish,strongly compressed oval disc,very_compressed
+Chaetodontidae,Chaetodon striatus,Banded butterflyfish,strongly compressed oval disc,very_compressed
+Diodontidae,Diodon holocanthus,Balloonfish,robust oval,not_compressed
+Diodontidae,Diodon hystrix,Porcupinefish,robust,not_compressed
+Haemulidae,Anisotremus surinamensis,Black margate,compressed,compressed
+Haemulidae,Haemulon album,Margate,compressed,compressed
+Haemulidae,Haemulon carbonarium,Caesar grunt,compressed,compressed
+Haemulidae,Haemulon flavolineatum,French grunt,compressed,compressed
+Haemulidae,Haemulon sciurus,Bluestriped grunt,compressed,compressed
+Holocentridae,Holocentrus adscensionis,Squirrelfish,compressed,compressed
+Holocentridae,Holocentrus rufus,Longspine squirrelfish,compressed,compressed
+Kyphosidae,Kyphosus sectatrix,Bermuda chub,compressed,compressed
+Labridae,Bodianus rufus,Spanish hogfish,compressed,compressed
+Labridae,Halichoeres radiatus,Puddingwife,compressed,compressed
+Lutjanidae,Lutjanus analis,Mutton snapper,compressed,compressed
+Lutjanidae,Lutjanus apodus,Schoolmaster,compressed,compressed
+Lutjanidae,Lutjanus buccanella,Blackfin snapper,compressed,compressed
+Lutjanidae,Lutjanus griseus,Gray snapper,compressed,compressed
+Lutjanidae,Lutjanus jocu,Dog snapper,compressed,compressed
+Lutjanidae,Lutjanus mahogoni,Mahogany snapper,compressed,compressed
+Lutjanidae,Lutjanus synagris,Lane snapper,compressed,compressed
+Lutjanidae,Ocyurus chrysurus,Yellowtail snapper,NA,"NA"
+Lutjanidae,Rhomboplites aurorubens,Vermilion snapper,NA,"NA"
+Monacanthidae,Aluterus monoceros,Unicorn filefish,very compressed elongated oval,very_compressed
+Monacanthidae,Aluterus scriptus,Scrawled filefish,very compressed elongated oval,very_compressed
+Monacanthidae,Cantherhines macrocerus,Whitespotted filefish,compressed,compressed
+Mullidae,Mulloidichthys martinicus,Yellow goatfish,NA,"NA"
+Muraenidae,Gymnothorax funebris,Green moray,compressed at rear,compressed
+Ostraciidae,Acanthostracion polygonius,Honeycomb cowfish,thick,not_compressed
+Ostraciidae,Lactophrys bicaudalis,Spotted trunkfish,thick,not_compressed
+Ostraciidae,Lactophrys triqueter,Smooth trunkfish,thick,not_compressed
+Pomacanthidae,Holacanthus ciliaris,Queen angelfish,strongly compressed,very_compressed
+Pomacanthidae,Holacanthus tricolor,Rock beauty,strongly compressed,very_compressed
+Pomacanthidae,Pomacanthus arcuatus,Gray angelfish,compressed,compressed
+Pomacanthidae,Pomacanthus paru,French angelfish,compressed,compressed
+Scaridae,Scarus taeniopterus,Princess parrotfish,somewhat compressed,moderately_compressed
+Scaridae,Scarus vetula,Queen parrotfish,somewhat compressed,moderately_compressed
+Scaridae,Sparisoma viride,Stoplight parrotfish,somewhat compressed,moderately_compressed
+Sciaenidae,Equetus punctatus,Spotted drum,NA,"NA"
+Scorpaenidae,Pterois volitans,Red lionfish,moderately compressed,moderately_compressed
+Serranidae,Cephalopholis fulva,Coney,robust,not_compressed
+Serranidae,Epinephelus guttatus,Red hind,compressed,compressed
+Serranidae,Epinephelus striatus,Nassau grouper,compressed,compressed
+Sparidae,Calamus bajonado,Jolthead porgy,compressed,compressed
+Sparidae,Calamus pennatula,Pluma porgy,compressed,compressed

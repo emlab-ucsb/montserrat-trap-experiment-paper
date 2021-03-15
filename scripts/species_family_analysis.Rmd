@@ -302,14 +302,13 @@ traps_paired_no_zeros %>%
   
 ```
 
-```{r proportions of fish in each trap type by body shape}
-#classification of body shape using description from https://biogeodb.stri.si.edu/caribbean/en/pages
-#D R Robertson and J Van Tassell. 2019. Shorefishes of the Greater Caribbean: online information system. Version 2.0 Smithsonian Tropical Research Institute, Balboa, Panamá.
+```{r classification of fish by body shape}
 
-#import description data
+#import description data. Body width descriptions were manually retrieved from the shorefishes database https://biogeodb.stri.si.edu/caribbean/en/pages
+#D R Robertson and J Van Tassell. 2019. Shorefishes of the Greater Caribbean: online information system. Version 2.0 Smithsonian Tropical Research Institute, Balboa, Panamá.
 species_descrip <- read_csv("../data/species_list_shorefishes_id.csv")
 
-#see what body width descriptions there are
+#get a list of unique body width descriptions
 species_descrip %>% distinct(`Compressed? (from description)`) %>% 
   arrange(`Compressed? (from description)`)
 
@@ -320,15 +319,27 @@ species_descrip <- species_descrip %>%
                                       str_detect(`Compressed? (from description)`, "thick|robust") ~ "not_compressed",
                                       is.na(`Compressed? (from description)`) ~ "NA",
                                       TRUE ~ as.character("compressed"))) %>% 
-  #drop fields ready for joining
-  select(-family, -common, -`Description from https://biogeodb.stri.si.edu/caribbean/en/pages`, -`Compressed? (from description)`)
+  select(-`Description from https://biogeodb.stri.si.edu/caribbean/en/pages`)
+
+write_csv(species_descrip, "../outputs/body_compression_species_list.csv")
+```
+
+```{r proportions of fish in each trap type by body shape}
+
+#the species list with body compression information from the previous code chunk was sent to D.R. Robertson, the curator and maintainer of the shorefishes database for verification and update. He kindly filled in body compression classifications for a few species that had no descriptions (NA) and changed a few based on his expert knowledge (saved email dated 2021-3-11). His updated list is imported here:
+
+robertson_body_compression <- read_csv("../data/species_list_shorefishes_Robertson.csv") %>% 
+  #as per Ross Robertson's suggestion, changing 'compressed' to 'slightly compressed' and factoring according to their level of compression
+  rename(body_compression = `body_compression classification`) %>% 
+  mutate(body_compression = case_when(body_compression == "compressed" ~ "slightly_compressed",
+                                      body_compression == "very compressed" ~ "very_compressed",
+                                      TRUE ~ as.character(body_compression)),
+         body_compression = as_factor(body_compression),
+         body_compression = fct_relevel(body_compression,"very_compressed", "moderately_compressed", "slightly_compressed", "not_compressed"))
 
 #attach body compression info to the traps data and remove any that did not have body compression info
 traps_w_compression <- traps_paired_no_zeros %>%
-  left_join(., species_descrip, by = c("sciname" = "sciname")) %>% 
-  filter(!body_compression == "NA") %>% 
-  mutate(body_compression = as_factor(body_compression),
-         body_compression = fct_relevel(body_compression,"very_compressed", "compressed", "moderately_compressed", "not_compressed"))
+  left_join(., select(robertson_body_compression, sciname, body_compression), by = c("sciname" = "sciname"))
   
 
 #table of no of fish
@@ -367,13 +378,6 @@ for (i in body_compress_prop_test$body_compression) {
   
 }
 
-
-#output fish species and family list with their thick or thin bodied classification
-traps_w_compression %>% 
-  distinct(family, common, body_compression) %>% 
-  arrange(family, common) %>% 
-  write_csv("../outputs/body_compression_species_list.csv")
-
 #traps_paired_no_zeros$family <- as.factor(traps_paired_no_zeros$family)
 
 #get fish no.s grouped by family and trap type, and plot
@@ -391,12 +395,12 @@ traps_w_compression %>%
   labs(x= "Body compression", y = "Proportion of fish in trap (%)", fill = NULL) +
   theme_bw() +
   scale_fill_manual(values = plot_colours) +
-  theme(axis.text.x = element_text(angle=45, hjust = 0.7), axis.text = element_text(size = 10), axis.title = element_text(size = 12), legend.position = c(0.8, 0.7), legend.text = element_text(size = 12)) +
-  scale_x_discrete(labels = c("very_compressed" = "Very compressed", "compressed" = "Compressed", "moderately_compressed" = "Moderately compressed", "not_compressed" = "Not compressed")) +
-  geom_text( aes(y=prop_fish+2, label = ifelse(p_value<0.05 & Exp_or_Cont != "Control","*","")), size = 10) +
-  geom_segment(aes(x = "compressed", y = 45, xend = "moderately_compressed", yend = 45), size = 1, 
+  theme(axis.text = element_text(size = 10), axis.title = element_text(size = 12), legend.position = c(0.8, 0.7), legend.text = element_text(size = 12)) +
+  scale_x_discrete(labels = c("very_compressed" = "Very \ncompressed", "moderately_compressed" = "Moderately \ncompressed", "slightly_compressed" = "Slightly \ncompressed", "not_compressed" = "Not \ncompressed")) +
+  geom_text( aes(y=prop_fish+5, label = ifelse(p_value<0.05 & Exp_or_Cont != "Control","*","")), size = 10) +
+  geom_segment(aes(x = 1.5, y = 58, xend = 3.5, yend = 58), size = 1, 
                arrow = arrow(length = unit(.4,"cm"))) +
-  geom_text(aes(x = "moderately_compressed", y = 45, label = "Wider bodied fish"), hjust = -0.1, size = 6)
+  geom_text(aes(x = 3.5, y = 58, label = "Wider bodied \n\tfish"), hjust = -0.1, size = 6)
 
 ggsave("../outputs/figures/proportion_body_compression.png", width = 16, height = 8)
 

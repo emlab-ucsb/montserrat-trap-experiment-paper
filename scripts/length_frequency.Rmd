@@ -427,36 +427,55 @@ mean_length_Mat50_table <- traps_paired_no_zeros %>%
   pivot_wider(names_from = Exp_or_Cont, values_from = mean_length) %>% 
   mutate("Mean length greater than Mat50?" = case_when(Control > Mat50 | Experimental>Mat50 ~ TRUE,
                                                        Control < Mat50 | Experimental<Mat50 ~ FALSE))
+
 mean_length_Mat50_table %>% 
   mutate(species = paste0(common, " (", sciname,")")) %>% 
   select(-common, -sciname) %>%
   relocate(species, .before = Mat50) %>% 
   mutate(Mat50 = sprintf("%.1f", Mat50),
          Control = sprintf("%.1f", Control),
-         Experimental = sprintf("%.1f", Experimental)) %>% 
-gt(mean_length_Mat50_table) %>% 
-  cols_label(species = "Species name",
-             Mat50 = "Lmat (cm)",
-             Control = "Mean length in control traps (cm)",
-             Experimental = "Mean length in experimental traps (cm)",
-             `Mean length greater than Mat50?` = "Mean length greater than Lmat?") %>% 
-  gtsave("mean_length_Lmat_table.rtf", path = "../outputs/")
+         Experimental = sprintf("%.1f", Experimental)) 
 
 ```
-## Proportions of fish below and above Lmat
-```{r proportions of fish below and above Lmat}
-traps_paired_no_zeros %>% 
+## Proportions of fish below Lmat
+```{r proportions of fish below  Lmat}
+perc_less_Lmat <- traps_paired_no_zeros %>% 
   select(Exp_or_Cont, common, sciname, Length_cm) %>% 
   inner_join(lmat_values, by = "common") %>% 
   filter(!is.na(Mat50)) %>% 
-  mutate(Length_greater_Lmat = case_when(Length_cm>Mat50 ~ 1,
+  mutate(Length_less_Lmat = case_when(Length_cm<Mat50 ~ 1,
                                          TRUE ~ as.numeric(0))) %>% 
   group_by(Exp_or_Cont, common, sciname) %>% 
   summarise(Mat50 = mean(Mat50),
             mean_length = mean(Length_cm),
-            perc_greater_Lmat = sum(Length_greater_Lmat)/n()) %>% 
-  arrange(common, Exp_or_Cont)
+            perc_less_Lmat = sum(Length_less_Lmat)/n()) %>% 
+  arrange(common, Exp_or_Cont) %>% 
+  ungroup()
 
+perc_less_Lmat
+
+#outputs table
+  perc_less_Lmat %>% 
+    select(-Mat50, -mean_length) %>% 
+    pivot_wider(names_from = Exp_or_Cont, values_from = perc_less_Lmat) %>%
+    mutate(perc_higher_in_control = case_when(Control > Experimental ~ "True",
+                                              Control < Experimental ~ "False",
+                                              Control == Experimental ~ "Equal")) %>% 
+    mutate(Control = sprintf("%.1f", Control*100),
+           Experimental = sprintf("%.1f", Experimental*100)) %>%
+    mutate(species = paste0(common, " (", sciname,")")) %>% 
+    select(-common, -sciname) %>% 
+    relocate(species, .before = Control) %>% 
+    arrange(desc(perc_higher_in_control), species) %>% 
+    gt() %>% 
+    cols_label(species = "Species name",
+               Control = "Percent of fish species less than Lmat in control trap",
+               Experimental = "Percent of fish species less than Lmat in experimental trap",
+               perc_higher_in_control = "More immature fish in control trap?") %>% 
+    gtsave("Lmat_exp_control.rtf", path = "../outputs/")
+
+
+  
 ```
 
 
