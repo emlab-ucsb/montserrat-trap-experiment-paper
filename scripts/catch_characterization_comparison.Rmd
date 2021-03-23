@@ -14,6 +14,8 @@ library(lubridate)
 library(paletteer)
 library(ggtext)
 library(glue)
+library(sf)
+library(gt)
 ```
 
 ```{r data import and tidying, message=FALSE}
@@ -277,9 +279,141 @@ kable(traps %>%
   caption = "Proportion of each fish species in catch (all catch combined)")
 ```
 
+```{r species counts and missing species}
+#species counts for species absent in experimental or control traps
+
+traps_paired_no_zeros %>% 
+  group_by(Exp_or_Cont) %>% 
+  count(common) %>% 
+  pivot_wider(names_from = Exp_or_Cont, values_from = n, values_fill = list(n=0)) %>% 
+  arrange(desc(Experimental)) %>%
+  mutate(perc_control = sprintf("%.1f", 100*Control/sum(Control)), perc_exp = sprintf("%.1f",100*Experimental/sum(Experimental))) %>% 
+  filter(Control == 0 | Experimental == 0)
+```
+
+```{r output species list}
+traps_paired_no_zeros %>% 
+  distinct(sciname, common, family) %>% 
+  arrange(family, sciname, common) %>% 
+  relocate(family) %>% 
+  write_csv("../outputs/species_list.csv")
+```
+
+```{r chi-sq test difference in species proportions}
+
+#no of fish in traps, used in proportions test
+cont_fish_total <- nrow(traps_paired_no_zeros %>% filter(Exp_or_Cont == "Control"))
+exp_fish_total <- nrow(traps_paired_no_zeros %>% filter(Exp_or_Cont == "Experimental"))
+trap_totals <- c(cont_fish_total, exp_fish_total)
+
+#species counts in each trap type
+species_no <- traps_paired_no_zeros %>% 
+  group_by(Exp_or_Cont) %>% 
+  count(common) %>% 
+  pivot_wider(names_from = Exp_or_Cont, values_from = n, values_fill = list(n=0)) %>% 
+  pivot_longer(-common, names_to = "Exp_or_Cont", values_to = "n")
+
+#create tibble to store test results and with species names to cycle through in loop
+species_prop_test <- tibble(species = unique(species_no$common), chi_sq = numeric(1), df = numeric(1), p_value = numeric(1))
+
+#test for significant differece between proportions of fish families caught in control vs experimental traps
+for (i in species_prop_test$species) {
+  species_data <- species_no %>%
+  filter(common == i)
+  
+  results <- prop.test(species_data$n, trap_totals, correct = FALSE)
+  if(results$p.value<0.05) {
+    print(i) 
+    print(results) }
+  species_prop_test[species_prop_test$species == i, "p_value"] <- results$p.value
+  species_prop_test[species_prop_test$species == i, "chi_sq"] <- results$statistic
+  species_prop_test[species_prop_test$species == i, "df"] <- results$parameter
+}
+
+species_prop_test_rounded <- species_prop_test %>% 
+  arrange(p_value) %>% 
+  mutate("p-value" = sprintf("%0.3f", p_value), "chi_sq" = sprintf("%0.1f", chi_sq), df = sprintf("%0.0f", df))
+
+species_prop_sig_diff <- species_prop_test_rounded %>% 
+  filter(`p-value` <0.05) %>% 
+  select(-p_value)
+
+traps_paired_no_zeros %>% 
+  group_by(Exp_or_Cont) %>% 
+  count(common) %>% 
+  pivot_wider(names_from = Exp_or_Cont, values_from = n, values_fill = list(n=0)) %>% 
+  mutate(perc_control = sprintf("%.1f", 100*Control/sum(Control)), perc_exp = sprintf("%.1f",100*Experimental/sum(Experimental))) %>% 
+  right_join(., species_prop_sig_diff, by = c("common" = "species")) %>% 
+  arrange(perc_control) %>% 
+  mutate(group = case_when(perc_control <0.85 ~ "More fish in experimental trap",
+                           TRUE ~ "More fish in control trap")) %>% 
+  gt(groupname_col = "group") %>% 
+  cols_label(
+    common = "Species name",
+    #html codes for chi and squared
+    chi_sq = html("&chi;&sup2;")
+  ) %>% 
+  tab_spanner(
+    label = "Control trap",
+    columns = vars(Control, perc_control)
+  ) %>% 
+  tab_spanner(
+    label = "Experimental trap",
+    columns = vars(Experimental, perc_exp)
+  ) %>% 
+  cols_label(
+    Control = "No. of fish",
+    perc_control = "% of total",
+    Experimental = "No. of fish",
+    perc_exp = "% of total"
+  ) %>% 
+  #gtsave("sig_diff_species_counts.png", path = "../outputs/") %>% 
+  gtsave("S3 Table.rtf", path = "../outputs/tables/")
+  
+```
+
 ## Extra information required for revisions
 ```{r}
+#range of trap depths
 range(traps$depth_m, na.rm = TRUE)
 
+#mean distance apart of traps
+
+#first create spatial object for traps that have coordinates
+traps_spatial <- trap_hauls %>% 
+  distinct(TrapID, Exp_or_Cont, N_coord, W_coord) %>% 
+  arrange(TrapID) %>% 
+  filter(!is.na(N_coord)) %>% 
+  mutate(Trap_No = str_sub(TrapID, 2)) %>% 
+  sf::st_as_sf(coords = c("W_coord", "N_coord")) %>% 
+  st_set_crs(4326) %>% 
+  arrange(Trap_No)
+
+plot(traps_spatial["TrapID"])
+
+#set projection for Montserrat 1958 British West Indies grid
+mni_proj <- "+proj=tmerc +lat_0=0 +lon_0=-62 +k=0.9995000000000001 +x_0=400000 +y_0=0 +ellps=clrk80 +towgs84=174,359,365,0,0,0,0 +units=m +no_defs"
+
+#calculate distance between each trap pair
+trap_distances <- traps_spatial %>% 
+  st_transform(crs = mni_proj) %>% 
+  group_by(Trap_No) %>% 
+  #remove any lone traps (i.e. ones that don't have a pair with coordinates)
+  filter(n() >1) %>% 
+  mutate(distance = st_distance(geometry, lead(geometry), by_element = T)) %>% 
+  arrange(Trap_No) %>% 
+  ungroup()
+
+#mean trap separation
+trap_distances %>%
+  mutate(distance_m = as.numeric(distance)) %>% 
+ # filter(distance_m < 500) %>% 
+  summarise(mean_distance = mean(distance_m, na.rm = TRUE))
+
+#median trap separation
+  trap_distances %>%
+    mutate(distance_m = as.numeric(distance)) %>% 
+    filter(distance_m < 500) %>% 
+    summarise(mean_distance = median(distance_m, na.rm = TRUE))
 ```
 

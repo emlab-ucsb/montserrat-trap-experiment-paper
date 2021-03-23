@@ -211,7 +211,7 @@ all_models_glmer(dataset = trap_haul_no_zero_depth, full_model = no_species_dept
 ```{r full model summary tables}
 #check for overdispersion in models
 global_models <- list(length_model_max, biomass_log_model_max, no_fish_glmer_nb_max, no_species_glmer_nb_max)
-map(global_models, check_overdispersion)
+#map(global_models, check_overdispersion)
 
 tab_model(length_model_max, biomass_log_model_max, no_fish_glmer_nb_max, no_species_glmer_nb_max, 
           pred.labels = c( "Intercept", "Design (V)",  "log(Soak time)", "Location (windward)", "Escape gaps (present)"),
@@ -234,7 +234,7 @@ biomass_parsimonious <- lmer(log_biomass ~ log_days_since_last_haul + (1|TrapID)
 no_fish_parsimonious <- glmer.nb(no_fish ~ location_exposure +  (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=10000)))
 
 isSingular(no_fish_parsimonious)
-check_overdispersion(no_fish_parsimonious)
+#check_overdispersion(no_fish_parsimonious)
 
 summary(no_fish_parsimonious)
 
@@ -244,7 +244,7 @@ summary(test_no_fish_pars)
 no_species_parsimonious <- glmer.nb(no_species ~ log_days_since_last_haul + location_exposure + (1|TrapID) + (1|Date_YMD), data = trap_haul_no_zero, na.action = "na.fail", control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=10000)))
 
 parsimonious_models <- list(length_parsimonious, biomass_parsimonious, no_fish_parsimonious, no_species_parsimonious)
-map(parsimonious_models, check_overdispersion)
+#map(parsimonious_models, check_overdispersion)
 
 tab_model(length_parsimonious, biomass_parsimonious, no_fish_parsimonious, no_species_parsimonious, 
           pred.labels = c("Intercept", "log(Soak time)", "Location (windward)"),
@@ -364,9 +364,9 @@ no_species_nb_max <- glmer.nb(no_species ~ design + log_days_since_last_haul + l
 #despite error warning, below tests suggest there is no singularity(?)
 isSingular(no_species_nb_max)
 
-check_overdispersion(no_species_nb_max)
+#check_overdispersion(no_species_nb_max)
 #no overdispersion in neg binomial model, there is overdispersion in the poisson model
-check_overdispersion(no_species_glmer_max)
+#check_overdispersion(no_species_glmer_max)
  
 #compare models: https://stats.stackexchange.com/questions/311556/help-interpreting-count-data-glmm-using-lme4-glmer-and-glmer-nb-negative-binom
 lmtest::lrtest(no_species_glmer_max, no_species_nb_max)

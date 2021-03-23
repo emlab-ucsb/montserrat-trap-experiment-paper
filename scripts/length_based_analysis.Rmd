@@ -125,6 +125,27 @@ trap_hauls_paired_no_zeros <- traps_paired_no_zeros %>%
   ungroup()
 ```
 
+##Species with more than 10 individuals caught in both experimental and control traps
+```{r}
+#get list of species that have at least 10 individuals in both control and experimental traps
+species_more_than_10_both_traps <- traps %>% 
+  filter(common != "No fish") %>%
+  group_by(common, Exp_or_Cont) %>% 
+  summarize(n=n()) %>%
+  filter(n>10) %>% 
+  ungroup %>% 
+  spread(Exp_or_Cont, n) %>% 
+  na.omit() %>% 
+  gather(key = "Exp_or_Cont", value = "n", c("Control", "Experimental")) %>% 
+  distinct(common) %>% 
+  pull()
+
+scinames_more_than_10_both_traps<- traps_paired_no_zeros %>% 
+  filter(common %in% species_more_than_10_both_traps) %>% 
+  distinct(sciname, common) %>% 
+  pull(sciname)
+```
+
 ## Length-frequency histogram, paired trap hauls excluding zeros
 ```{r length-frequency histogram}
 
@@ -236,19 +257,6 @@ traps_paired_no_zeros %>%
 #Kolmogorov-Smirnov tests to see if length-frequency distributions of species are the same. Using only species with more than 10 samples in both control and experimental traps - see Razali and Wah 2011 for discussion of low power of tests at small sample sizes
 #Also plotting empirical cumulative distribution function and D-value which is used to calculate K-S test significance
   
-#get list of species that have at least 10 individuals in both control and experimental traps
-species_more_than_10_both_traps <- traps %>% 
-  filter(common != "No fish") %>%
-  group_by(common, Exp_or_Cont) %>% 
-  summarize(n=n()) %>%
-  filter(n>10) %>% 
-  ungroup %>% 
-  spread(Exp_or_Cont, n) %>% 
-  na.omit() %>% 
-  gather(key = "Exp_or_Cont", value = "n", c("Control", "Experimental")) %>% 
-  distinct(common) %>% 
-  pull()
-
 ecdf_hist_plots<- traps %>% 
   filter(common %in% species_more_than_10_both_traps) %>% 
   #this splits the data into multiple dataframes corresponding to each species
@@ -260,6 +268,60 @@ iwalk(ecdf_hist_plots, ~{
      print(.x)
      dev.off()
 })
+
+```
+
+## Species Kolmogorov-Smirnov tests (paired data only)
+```{r ks tests species paired data}
+#Kolmogorov-Smirnov tests to see if length-frequency distributions of species are the same. Using only species with more than 10 samples in both control and experimental traps - see Razali and Wah 2011 for discussion of low power of tests at small sample sizes
+#Also plotting empirical cumulative distribution function and D-value which is used to calculate K-S test significance
+#SAME AS PREVIOUS CHUNK BUT USING ONLY PAIRED DATA
+
+ecdf_hist_plots<- traps_paired_no_zeros %>% 
+  filter(common %in% species_more_than_10_both_traps) %>% 
+  #this splits the data into multiple dataframes corresponding to each species
+  split(.$common) %>% 
+  map(~ks_testing(data = .))
+
+iwalk(ecdf_hist_plots, ~{
+     pdf(paste0("../outputs/figures/species_ecdf_hist_paired/", .y, ".pdf") )
+     print(.x)
+     dev.off()
+})
+
+#create summary table of K-S test results
+ks_test_results <- tibble(common = species_more_than_10_both_traps, D_max = numeric(1), p_value = numeric(1))
+
+for (i in species_more_than_10_both_traps) {
+  control_length <- traps_paired_no_zeros %>% 
+    filter(common == i) %>% 
+    filter(Exp_or_Cont == "Control") %>% 
+    pull(Length_cm)
+  
+  exp_length <- traps_paired_no_zeros %>% 
+    filter(common == i) %>% 
+    filter(Exp_or_Cont == "Experimental") %>% 
+    pull(Length_cm)
+  
+  test_result<- ks.test(control_length,exp_length)
+  
+  ks_test_results[ks_test_results$common == i, "D_max"] <- test_result$statistic
+  ks_test_results[ks_test_results$common == i, "p_value"] <- test_result$p.value
+}
+
+ks_test_results %>% 
+    left_join(distinct(traps_paired_no_zeros, common, sciname)) %>%
+    mutate(species = paste0(common, " (", sciname,")")) %>% 
+    select(-common, -sciname) %>% 
+    relocate(species, .before = D_max) %>% 
+    mutate(D_max = sprintf("%.2f", D_max),
+           p_value = sprintf("%.2f", p_value)) %>%
+    arrange(species) %>% 
+    gt() %>% 
+    cols_label(species = "Species name",
+               D_max = "Dmax",
+               p_value = "p-value") %>% 
+    gtsave("S4 Table.rtf", path = "../outputs/tables/")
 ```
 
 ## Length-frequency plots for short, medium and long soak times
@@ -301,7 +363,7 @@ cowplot::plot_grid(combined_plot, legend, rel_widths = c(1,0.3)) +
   draw_label("Number of fish", x= 0, y=0.5, vjust= 1.5, angle=90, size = 12)
 
 ggsave("../outputs/figures/soak_time_length_freq_species.png", width = 16, height = 12)
-ggsave("../outputs/figures/S5 Fig.tiff", dpi = 300, width = 19, height = 12, units = "cm", compression = "lzw")
+ggsave("../outputs/figures/S3 Fig.tiff", dpi = 300, width = 19, height = 12, units = "cm", compression = "lzw")
 
 #get number of trap hauls in each soak time grouping
 traps_no_zeros %>% 
@@ -341,12 +403,7 @@ traps_no_zeros %>%
 ## Length-frequency plots for species with more than 10 individuals in control and experimental plots
 Using Fishbase Lmat values. I will not use this in results because Fishbase Lmat values are not very reliable: sometimes based on very small sample sizes and not from islands close to Montserrat
 
-```{r length frequency with Lmat}
-scinames_more_than_10_both_traps<- traps_paired_no_zeros %>% 
-  filter(common %in% species_more_than_10_both_traps) %>% 
-  distinct(sciname, common) %>% 
-  pull(sciname)
-  
+```{r length frequency with Lmat, eval=FALSE}
 #pull Lmat values from fishbase
 lmat_fishbase <- rfishbase::maturity(scinames_more_than_10_both_traps, fields = c("Species", "Lm"))
 
@@ -452,7 +509,13 @@ perc_less_Lmat <- traps_paired_no_zeros %>%
   arrange(common, Exp_or_Cont) %>% 
   ungroup()
 
-perc_less_Lmat
+#number of fish with and without Lmat values
+traps_paired_no_zeros %>% 
+  select(Exp_or_Cont, common, sciname, Length_cm) %>% 
+  left_join(lmat_values, by = "common") %>% 
+  count(is.na(Mat50))
+
+#Total % of number of fish which I have Lmat values for = 1240/2315 = 53.56%
 
 #outputs table
   perc_less_Lmat %>% 
@@ -472,10 +535,102 @@ perc_less_Lmat
                Control = "Percent of fish species less than Lmat in control trap",
                Experimental = "Percent of fish species less than Lmat in experimental trap",
                perc_higher_in_control = "More immature fish in control trap?") %>% 
-    gtsave("Lmat_exp_control.rtf", path = "../outputs/")
+    gtsave("S5 Table.rtf", path = "../outputs/tables/")
 
 
   
+```
+
+##Chi-squared test for differences of proportions of fish below Lmat in Control and Experimental traps
+```{r}
+for (i in unique(perc_less_Lmat$common)) {
+  print(perc_less_Lmat %>% 
+    filter(common == i) %>% 
+    ggplot(aes(x= Exp_or_Cont, y = perc_less_Lmat*100, fill = Exp_or_Cont)) + 
+    geom_col())
+  
+  total_fish__species_i <- traps_paired_no_zeros %>% 
+    filter(common == i) %>%
+    count(Exp_or_Cont) %>% 
+    arrange(Exp_or_Cont) %>% 
+    pull(n)
+  
+  species_i_counts <- traps_paired_no_zeros %>% 
+    filter(common == i) %>% 
+    left_join(lmat_values, by = "common") %>% 
+    mutate(Length_less_Lmat = case_when(Length_cm<Mat50 ~ 1,
+                                         TRUE ~ as.numeric(0))) %>% 
+    group_by(Exp_or_Cont) %>% 
+    summarise(no_less_than_Lmat = sum(Length_less_Lmat)) %>% 
+    arrange(Exp_or_Cont) %>% 
+    pull(no_less_than_Lmat)
+    
+  print(i)
+  print(prop.test(species_i_counts, total_fish__species_i))
+}
+```
+
+##t-test and Wilcoxon signed rank tests of difference in counts of fish less than Lmat in control and experimental traps
+```{r}
+traps_less_lmat_classified <- traps_paired_no_zeros %>%
+  left_join(lmat_values, by = "common") %>%
+  drop_na(Mat50) %>%
+  mutate(Length_less_Lmat = case_when(Length_cm < Mat50 ~ 1,
+                                      TRUE ~ as.numeric(0))) 
+
+source("../functions/testing_2samples.R")
+
+for (i in unique(traps_less_lmat_classified$common)) {
+  traps_paired_prop_less_lmat <- traps_less_lmat_classified %>%
+    filter(common == i) %>%
+    group_by(TrapID, Date_YMD, Exp_or_Cont) %>%
+    summarise(prop_less_Lmat = sum(Length_less_Lmat) / n()) %>%
+    ungroup() %>%
+    #create TrapNo key
+    mutate(TrapNo = str_extract(TrapID, "\\d+")) %>%
+    select(-TrapID) %>%
+    #pivot to wider data and fill zeros for trap pair that had zero species less than Lmat (otherwise we have no data for these traps since they get dropped when filtering for species)
+    pivot_wider(names_from = Exp_or_Cont,
+                values_from = prop_less_Lmat,
+                values_fill = 0) %>%
+    #recreate long data
+    pivot_longer(
+      cols = c("Control", "Experimental"),
+      names_to = "Exp_or_Cont",
+      values_to = "prop_less_Lmat"
+    ) %>%
+    #rebuild TrapID code
+    mutate(TrapID = str_c(str_sub(Exp_or_Cont, 1, 1), TrapNo)) %>%
+    relocate(TrapID, .before = prop_less_Lmat) %>%
+    arrange(Date_YMD, TrapNo, Exp_or_Cont)
+  
+  #do not do plots and stats if all individuals caught were greater than Lmat (i.e. no immature fish in catch)
+  if(all(traps_paired_prop_less_lmat$prop_less_Lmat == 0)){
+        print(paste0("All individuals of ", i, " caught in control and experimental traps were above Lmat"))
+  }
+
+     else{
+  
+  print(ggplot(traps_paired_prop_less_lmat, aes(x = Exp_or_Cont, y = prop_less_Lmat)) +
+    geom_boxplot() +
+      labs(title = i))
+  
+  #arrange data for t-test so each Control and Experimental traps are in order
+  testing_data <- traps_paired_prop_less_lmat %>% 
+    arrange(Exp_or_Cont, Date_YMD, TrapNo)
+  
+  #used to check if data are correctly paired
+  # t <- testing_data %>% select(Date_YMD, TrapNo, Exp_or_Cont) %>% slice(1:61)
+  # t2 <- testing_data %>% select(Date_YMD, TrapNo, Exp_or_Cont) %>% slice(62:122)
+  # t3 <- bind_cols(t, t2)
+  print(i)
+  testing_2sample_sig_diff(data = testing_data, variable = 'prop_less_Lmat', group = 'Exp_or_Cont', paired_Tor_F = TRUE)
+ 
+  #also do non-parametric test
+print(testing_data %>%
+  wilcox.test(data = ., prop_less_Lmat ~ Exp_or_Cont, paired = TRUE))
+}
+}
 ```
 
 

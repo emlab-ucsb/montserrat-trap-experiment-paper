@@ -1,4 +1,4 @@
-#function to do normality tests and run t-test and Wilcox signed rank test (non-parametric equivalent)
+#function to do normality tests and run t-test
 testing_2sample_sig_diff <-function(data, variable, group, paired_Tor_F){
 
 #diagnostics - histogram, qq plot and variance test
