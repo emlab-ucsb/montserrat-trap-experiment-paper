@@ -1,7 +1,7 @@
 # An experimental evaluation of the effect of escape gaps on the quantity, diversity, and size of fish caught in traps in Montserrat
 This repository contains code and data for:
 
-Flower, J., Estep, A., James, K., Ramdeen, R., Runge, C., Thomas, L., & Lester, S.E. (2021). An experimental evaluation of the effect of escape gaps on the quantity, diversity, and size of fish caught in traps in Montserrat. PLoS ONE
+Flower, J., Estep, A., James, K., Ramdeen, R., Runge, C.A., Thomas, L., & Lester, S.E. (2021). An experimental evaluation of the effect of escape gaps on the quantity, diversity, and size of fish caught in traps in Montserrat. PLOS ONE 16(12): e0261119. https://doi.org/10.1371/journal.pone.0261119
 
 
 <div itemscope itemtype="https://schema.org/Person"><a itemprop="sameAs" content="https://orcid.org/0000-0002-6731-8182" href="https://orcid.org/0000-0002-6731-8182" target="orcid.widget" rel="me noopener noreferrer" style="vertical-align:top;"><img src="https://orcid.org/sites/default/files/images/orcid_16x16.png" style="width:1em;margin-right:.5em;" alt="ORCID iD icon">https://orcid.org/0000-0002-6731-8182</a></div>
